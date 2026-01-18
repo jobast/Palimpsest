@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils'
 
 export function Toolbar() {
   const { editor } = useEditorStore()
-  const { toggleSidebar, sidebarOpen, toggleFocusMode, statsSidebarOpen, toggleStatsSidebar } = useUIStore()
+  const { toggleSidebar, sidebarOpen, toggleFocusMode, statsSidebarOpen, toggleStatsSidebar, openSettings } = useUIStore()
   const { saveProject, openProject, isDirty } = useProjectStore()
   const { isExporting, exportDocx, exportPdf } = useExport()
 
@@ -219,7 +219,7 @@ export function Toolbar() {
 
       <ToolbarSeparator />
 
-      <ToolbarButton icon={<Settings size={16} />} onClick={() => {}} title="Paramètres" />
+      <ToolbarButton icon={<Settings size={16} />} onClick={openSettings} title="Paramètres" />
     </div>
   )
 }

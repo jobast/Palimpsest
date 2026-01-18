@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useProjectStore } from './stores/projectStore'
 import { useUIStore } from './stores/uiStore'
 import { Layout } from './components/layout/Layout'
 import { ToastContainer } from './components/notifications/ToastContainer'
 import { NewProjectForm } from './components/layout/WelcomeScreen'
+import { SettingsModal } from './components/ui/SettingsModal'
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
 
@@ -11,12 +12,44 @@ function App() {
   const loadLastProject = useProjectStore(state => state.loadLastProject)
   const openProject = useProjectStore(state => state.openProject)
   const saveProject = useProjectStore(state => state.saveProject)
+  const isDirty = useProjectStore(state => state.isDirty)
+  const project = useProjectStore(state => state.project)
   const toggleFocusMode = useUIStore(state => state.toggleFocusMode)
+  const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled)
+  const autoSaveInterval = useUIStore(state => state.autoSaveInterval)
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
+  const autoSaveTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     loadLastProject()
   }, [loadLastProject])
+
+  // Auto-save logic
+  useEffect(() => {
+    // Clear any existing timer
+    if (autoSaveTimerRef.current) {
+      window.clearInterval(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
+
+    // Only set up auto-save if enabled and we have a project
+    if (!autoSaveEnabled || !project) {
+      return
+    }
+
+    autoSaveTimerRef.current = window.setInterval(() => {
+      if (isDirty) {
+        console.log('Auto-saving project...')
+        saveProject()
+      }
+    }, autoSaveInterval * 1000)
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        window.clearInterval(autoSaveTimerRef.current)
+      }
+    }
+  }, [autoSaveEnabled, autoSaveInterval, project, isDirty, saveProject])
 
   // Menu action handler
   const handleMenuAction = useCallback((action: string) => {
@@ -57,6 +90,7 @@ function App() {
     <>
       <Layout />
       <ToastContainer />
+      <SettingsModal />
       {showNewProjectDialog && (
         <NewProjectForm
           onCancel={() => setShowNewProjectDialog(false)}
