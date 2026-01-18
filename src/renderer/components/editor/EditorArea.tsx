@@ -163,10 +163,23 @@ export function EditorArea() {
 
   // Subscribe to analysis store changes to refresh decorations
   const analysisUpdateCounter = useRef(0)
+  const prevAnalysisState = useRef<string | null>(null)
   const { result: analysisResult, activeMode, selectedIssueId } = useAnalysisStore()
 
   useEffect(() => {
     if (!editor) return
+
+    // Only dispatch if analysis state actually changed (not on initial mount/hydration)
+    const stateKey = `${activeMode}-${selectedIssueId}-${analysisResult?.issues.length ?? 0}`
+    if (prevAnalysisState.current === null) {
+      prevAnalysisState.current = stateKey
+      return // Skip initial render
+    }
+
+    if (prevAnalysisState.current === stateKey) {
+      return // No meaningful change
+    }
+    prevAnalysisState.current = stateKey
 
     // Force decoration refresh by dispatching an empty transaction
     analysisUpdateCounter.current++
