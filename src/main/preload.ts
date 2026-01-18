@@ -22,14 +22,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Menu action listeners
   onMenuAction: (callback: (action: string) => void) => {
-    const actions = ['new-project', 'open-project', 'save-project', 'toggle-focus-mode']
+    const actions = ['new-project', 'open-project', 'save-project', 'toggle-focus-mode', 'export-docx', 'export-pdf']
     actions.forEach(action => {
       ipcRenderer.on(`menu:${action}`, () => callback(action))
     })
   },
 
   removeMenuListeners: () => {
-    const actions = ['new-project', 'open-project', 'save-project', 'toggle-focus-mode']
+    const actions = ['new-project', 'open-project', 'save-project', 'toggle-focus-mode', 'export-docx', 'export-pdf']
     actions.forEach(action => {
       ipcRenderer.removeAllListeners(`menu:${action}`)
     })

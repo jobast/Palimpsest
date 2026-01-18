@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { useExport } from '@/hooks/useExport'
 import { defaultTemplates } from '@shared/types/templates'
 import { MiniTimer, MiniCircularProgress, CompactStreak } from '@/components/stats'
 import { useStatsStore } from '@/stores/statsStore'
@@ -25,22 +24,17 @@ import {
   PanelRight,
   Maximize2,
   Save,
-  FolderOpen,
-  FilePlus,
   Settings,
   ChevronDown,
   FileText,
-  Asterisk,
-  FileDown,
-  Loader2
+  Asterisk
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function Toolbar() {
   const { editor } = useEditorStore()
   const { toggleSidebar, sidebarOpen, toggleFocusMode, statsSidebarOpen, toggleStatsSidebar, openSettings } = useUIStore()
-  const { saveProject, openProject, isDirty } = useProjectStore()
-  const { isExporting, exportDocx, exportPdf } = useExport()
+  const { saveProject, isDirty } = useProjectStore()
 
   if (!editor) {
     return (
@@ -51,7 +45,7 @@ export function Toolbar() {
   }
 
   return (
-    <div className="h-10 border-b border-border bg-card flex items-center px-2 gap-1 titlebar-no-drag">
+    <div className="h-10 border-b border-border bg-card flex items-center px-2 gap-1 titlebar-no-drag overflow-hidden min-w-0">
       {/* Layout controls */}
       <ToolbarButton icon={<PanelLeft size={16} />} onClick={toggleSidebar} active={sidebarOpen} title="Manuscrit" />
       <ToolbarButton icon={<PanelRight size={16} />} onClick={toggleStatsSidebar} active={statsSidebarOpen} title="Statistiques" />
@@ -59,13 +53,11 @@ export function Toolbar() {
 
       <ToolbarSeparator />
 
-      {/* File operations */}
-      <ToolbarButton icon={<FilePlus size={16} />} onClick={() => {}} title="Nouveau projet" />
-      <ToolbarButton icon={<FolderOpen size={16} />} onClick={openProject} title="Ouvrir projet" />
+      {/* Save */}
       <ToolbarButton
         icon={<Save size={16} />}
         onClick={saveProject}
-        title="Enregistrer"
+        title="Enregistrer (⌘S)"
         className={isDirty ? 'text-primary' : ''}
       />
 
@@ -184,8 +176,8 @@ export function Toolbar() {
         title="Pause de scène (⌘⇧8)"
       />
 
-      {/* Spacer */}
-      <div className="flex-1" />
+      {/* Spacer - can shrink to fit */}
+      <div className="flex-1 min-w-0" />
 
       {/* Stats indicators */}
       <MiniTimer />
@@ -193,29 +185,8 @@ export function Toolbar() {
       <StatsIndicators />
       <ToolbarSeparator />
 
-      {/* Export buttons */}
-      <ToolbarButton
-        icon={isExporting ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
-        onClick={exportDocx}
-        disabled={isExporting}
-        title="Exporter en Word (.docx)"
-      />
-      <ToolbarButton
-        icon={<FileText size={16} />}
-        onClick={() => exportPdf()}
-        disabled={isExporting}
-        title="Exporter en PDF"
-      />
-
-      <ToolbarSeparator />
-
       {/* Template selector */}
       <TemplateSelector />
-
-      <ToolbarSeparator />
-
-      {/* Word count */}
-      <WordCountDisplay />
 
       <ToolbarSeparator />
 
@@ -258,27 +229,6 @@ function ToolbarButton({
 
 function ToolbarSeparator() {
   return <div className="w-px h-5 bg-border mx-1" />
-}
-
-function WordCountDisplay() {
-  const { editor, wordsAdded, wordsDeleted } = useEditorStore()
-  const { showWordCount } = useUIStore()
-
-  if (!showWordCount || !editor) return null
-
-  const wordCount = editor.storage.characterCount?.words() ?? 0
-  const netChange = wordsAdded - wordsDeleted
-
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground px-2">
-      <span>{wordCount.toLocaleString()} mots</span>
-      {netChange !== 0 && (
-        <span className={netChange > 0 ? 'text-green-600' : 'text-red-600'}>
-          {netChange > 0 ? '+' : ''}{netChange}
-        </span>
-      )}
-    </div>
-  )
 }
 
 function TemplateSelector() {

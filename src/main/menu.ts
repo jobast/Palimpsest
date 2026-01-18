@@ -50,6 +50,28 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Exporter',
+          submenu: [
+            {
+              label: 'Exporter en Word (.docx)',
+              accelerator: 'CmdOrCtrl+Shift+E',
+              click: () => {
+                console.log('Menu: export-docx clicked')
+                mainWindow.webContents.send('menu:export-docx')
+              }
+            },
+            {
+              label: 'Exporter en PDF',
+              accelerator: 'CmdOrCtrl+Shift+P',
+              click: () => {
+                console.log('Menu: export-pdf clicked')
+                mainWindow.webContents.send('menu:export-pdf')
+              }
+            }
+          ]
+        },
+        { type: 'separator' },
         isMac
           ? { role: 'close' as const, label: 'Fermer' }
           : { role: 'quit' as const, label: 'Quitter' }

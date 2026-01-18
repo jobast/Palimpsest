@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useProjectStore } from './stores/projectStore'
 import { useUIStore } from './stores/uiStore'
+import { useExport } from './hooks/useExport'
 import { Layout } from './components/layout/Layout'
 import { ToastContainer } from './components/notifications/ToastContainer'
 import { NewProjectForm } from './components/layout/WelcomeScreen'
@@ -17,6 +18,7 @@ function App() {
   const toggleFocusMode = useUIStore(state => state.toggleFocusMode)
   const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled)
   const autoSaveInterval = useUIStore(state => state.autoSaveInterval)
+  const { exportDocx, exportPdf } = useExport()
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const autoSaveTimerRef = useRef<number | null>(null)
 
@@ -67,8 +69,14 @@ function App() {
       case 'toggle-focus-mode':
         toggleFocusMode()
         break
+      case 'export-docx':
+        exportDocx()
+        break
+      case 'export-pdf':
+        exportPdf()
+        break
     }
-  }, [openProject, saveProject, toggleFocusMode])
+  }, [openProject, saveProject, toggleFocusMode, exportDocx, exportPdf])
 
   // Listen for menu actions from Electron
   useEffect(() => {
