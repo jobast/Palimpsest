@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { defaultTemplates } from '@shared/types/templates'
-import { FolderOpen, Plus } from 'lucide-react'
+import { FolderOpen, Plus, Folder } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
 
 export function WelcomeScreen() {
   const [showNewProject, setShowNewProject] = useState(false)
@@ -69,11 +71,34 @@ export function NewProjectForm({ onCancel, isModal = false }: { onCancel: () => 
   const [name, setName] = useState('')
   const [author, setAuthor] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState(defaultTemplates[0].id)
+  const [projectLocation, setProjectLocation] = useState<string | null>(null)
+
+  const handleChooseLocation = async () => {
+    if (!isElectron) return
+    const result = await window.electronAPI.saveProject()
+    if (!result.canceled && result.filePath) {
+      setProjectLocation(result.filePath)
+    }
+  }
 
   const handleCreate = async () => {
     if (!name.trim()) return
-    await createNewProject(name, author, selectedTemplate)
+    // Pass the location if we're in Electron and have one selected
+    if (isElectron && projectLocation) {
+      await createNewProject(name, author, selectedTemplate, projectLocation)
+    } else {
+      await createNewProject(name, author, selectedTemplate)
+    }
   }
+
+  // Get display path (shortened for long paths)
+  const displayPath = projectLocation
+    ? projectLocation.length > 40
+      ? '...' + projectLocation.slice(-37)
+      : projectLocation
+    : null
+
+  const canCreate = name.trim() && (isElectron ? projectLocation : true)
 
   const content = (
     <div className="w-full max-w-md">
@@ -102,6 +127,27 @@ export function NewProjectForm({ onCancel, isModal = false }: { onCancel: () => 
             className="w-full px-3 py-2 rounded border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
+
+        {isElectron && (
+          <div>
+            <label className="block text-sm font-medium mb-1">Emplacement</label>
+            <button
+              onClick={handleChooseLocation}
+              className="w-full px-3 py-2 rounded border border-input bg-background hover:bg-accent transition-colors flex items-center gap-2 text-left"
+            >
+              <Folder size={16} className="text-muted-foreground flex-shrink-0" />
+              {projectLocation ? (
+                <span className="text-sm truncate" title={projectLocation}>
+                  {displayPath}
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  Choisir l'emplacement du projet...
+                </span>
+              )}
+            </button>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium mb-2">Format de manuscrit</label>
@@ -134,7 +180,7 @@ export function NewProjectForm({ onCancel, isModal = false }: { onCancel: () => 
         </button>
         <button
           onClick={handleCreate}
-          disabled={!name.trim()}
+          disabled={!canCreate}
           className="flex-1 px-4 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Créer

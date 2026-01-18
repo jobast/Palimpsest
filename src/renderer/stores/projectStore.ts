@@ -33,7 +33,7 @@ interface ProjectState {
   duplicateSheet: (id: string) => void
 
   // File operations
-  createNewProject: (name: string, author: string, template: string) => Promise<void>
+  createNewProject: (name: string, author: string, template: string, path?: string) => Promise<void>
   openProject: () => Promise<void>
   saveProject: () => Promise<void>
   loadLastProject: () => Promise<void>
@@ -328,7 +328,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     setActiveSheet(newSheet.id)
   },
 
-  createNewProject: async (name, author, template) => {
+  createNewProject: async (name, author, template, providedPath?) => {
     set({ isLoading: true })
     try {
       const project = createEmptyProject(name, author, template)
@@ -350,15 +350,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
 
       // Electron mode: use file system
-      const result = await window.electronAPI.saveProject()
-      if (result.canceled || !result.filePath) {
-        set({ isLoading: false })
-        return
+      let filePath = providedPath
+
+      // If no path provided, ask the user
+      if (!filePath) {
+        const result = await window.electronAPI.saveProject()
+        if (result.canceled || !result.filePath) {
+          set({ isLoading: false })
+          return
+        }
+        filePath = result.filePath
       }
 
-      const projectPath = result.filePath.endsWith('.palim')
-        ? result.filePath
-        : `${result.filePath}.palim`
+      const projectPath = filePath.endsWith('.palim')
+        ? filePath
+        : `${filePath}.palim`
 
       // Create project directory structure
       await window.electronAPI.createDirectory(projectPath)
