@@ -1,0 +1,25 @@
+appId: com.palimpseste.app
+productName: Palimpseste
+directories:
+  output: release
+files:
+  - dist/**/*
+  - package.json
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  target:
+    - dmg
+    - zip
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+linux:
+  icon: build/icons
+  target:
+    - AppImage
+    - deb
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

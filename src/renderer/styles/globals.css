@@ -1,0 +1,318 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 220 70% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 10%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 220 70% 50%;
+    --paper: 40 30% 96%;
+    --paper-foreground: 0 0% 15%;
+  }
+
+  .dark {
+    --background: 0 0% 10%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 220 70% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 220 70% 60%;
+    --paper: 40 10% 15%;
+    --paper-foreground: 0 0% 90%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Electron window drag region */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* TipTap Editor Styles */
+.ProseMirror {
+  outline: none;
+  min-height: 100%;
+}
+
+/* Manuscript editor specific styles */
+.manuscript-editor.ProseMirror {
+  color: hsl(var(--paper-foreground));
+}
+
+/* Regular paragraphs with first-line indent */
+.manuscript-editor.ProseMirror p {
+  margin: 0;
+  text-indent: var(--first-line-indent, 1.5em);
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* First paragraph after headings - no indent */
+.manuscript-editor.ProseMirror h1 + p,
+.manuscript-editor.ProseMirror h2 + p,
+.manuscript-editor.ProseMirror h3 + p,
+.manuscript-editor.ProseMirror [data-type="chapter-title"] + p,
+.manuscript-editor.ProseMirror [data-type="scene-break"] + p,
+.manuscript-editor.ProseMirror [data-type="first-paragraph"] {
+  text-indent: 0;
+}
+
+/* Chapter title styles */
+.manuscript-editor.ProseMirror [data-type="chapter-title"] {
+  font-size: 1.5em;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 2em;
+  margin-bottom: 1.5em;
+  text-indent: 0;
+}
+
+/* Scene break */
+.manuscript-editor.ProseMirror [data-type="scene-break"] {
+  text-align: center;
+  margin: 1.5em 0;
+  text-indent: 0;
+  letter-spacing: 0.5em;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Headings */
+.ProseMirror h1 {
+  @apply text-2xl font-bold mb-4;
+  text-indent: 0;
+}
+
+.ProseMirror h2 {
+  @apply text-xl font-bold mb-3;
+  text-indent: 0;
+}
+
+.ProseMirror h3 {
+  @apply text-lg font-semibold mb-2;
+  text-indent: 0;
+}
+
+/* Blockquote - for citations */
+.ProseMirror blockquote {
+  @apply border-l-4 border-muted pl-4 italic my-4;
+  text-indent: 0;
+  margin-left: 2em;
+  margin-right: 2em;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  @apply pl-6 my-2;
+  text-indent: 0;
+}
+
+.ProseMirror li {
+  @apply my-1;
+  text-indent: 0;
+}
+
+/* Horizontal rule - scene separator */
+.ProseMirror hr {
+  border: none;
+  text-align: center;
+  margin: 1.5em 0;
+}
+
+.ProseMirror hr::before {
+  content: "* * *";
+  color: hsl(var(--muted-foreground));
+  letter-spacing: 0.5em;
+}
+
+/* Placeholder text */
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: hsl(var(--muted-foreground));
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  text-indent: 0;
+}
+
+/* Page break decoration - creates visual gap between pages */
+.page-break {
+  position: relative;
+  height: 60px;
+  margin: 0;
+  background: hsl(var(--muted) / 0.3);
+  pointer-events: none;
+}
+
+/* Shadow at the bottom of the previous page */
+.page-break::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100px;
+  right: -100px;
+  height: 8px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.1), transparent);
+}
+
+/* Shadow at the top of the next page */
+.page-break::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: -100px;
+  right: -100px;
+  height: 8px;
+  background: linear-gradient(to top, rgba(0,0,0,0.1), transparent);
+}
+
+/* Highlight styles */
+.ProseMirror mark {
+  background-color: #fef08a;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.ProseMirror mark[data-color="red"] {
+  background-color: #fecaca;
+}
+
+.ProseMirror mark[data-color="green"] {
+  background-color: #bbf7d0;
+}
+
+.ProseMirror mark[data-color="blue"] {
+  background-color: #bfdbfe;
+}
+
+/* Page view styles */
+.page-container {
+  @apply bg-paper mx-auto;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.08);
+  position: relative;
+}
+
+/* Page shadow effect - left edge */
+.page-container::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: -2px;
+  width: 2px;
+  height: calc(100% - 10px);
+  background: linear-gradient(to right, rgba(0,0,0,0.08), transparent);
+  border-radius: 2px 0 0 2px;
+}
+
+/* Page content in Page View (read-only) */
+.manuscript-content {
+  color: hsl(var(--paper-foreground));
+}
+
+.manuscript-content p {
+  margin: 0;
+  text-indent: var(--first-line-indent, 1.5em);
+  text-align: justify;
+  hyphens: auto;
+}
+
+.manuscript-content h1 + p,
+.manuscript-content h2 + p,
+.manuscript-content h3 + p,
+.manuscript-content [data-type="chapter-title"] + p,
+.manuscript-content [data-type="scene-break"] + p,
+.manuscript-content [data-type="first-paragraph"] {
+  text-indent: 0;
+}
+
+.manuscript-content [data-type="chapter-title"] {
+  font-size: 1.5em;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 2em;
+  margin-bottom: 1.5em;
+  text-indent: 0;
+}
+
+.manuscript-content [data-type="scene-break"] {
+  text-align: center;
+  margin: 1.5em 0;
+  text-indent: 0;
+  letter-spacing: 0.5em;
+  color: hsl(var(--muted-foreground));
+}
+
+.manuscript-content h1 {
+  @apply text-2xl font-bold mb-4;
+  text-indent: 0;
+}
+
+.manuscript-content h2 {
+  @apply text-xl font-bold mb-3;
+  text-indent: 0;
+}
+
+.manuscript-content h3 {
+  @apply text-lg font-semibold mb-2;
+  text-indent: 0;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/30;
+}
