@@ -10,11 +10,13 @@ interface ProjectState {
   isLoading: boolean
   isDirty: boolean
   activeDocumentId: string | null
+  activeSheetId: string | null  // Currently edited sheet (null = editing manuscript)
 
   // Actions
   setProject: (project: Project, path: string) => void
   updateProject: (updates: Partial<Project>) => void
   setActiveDocument: (id: string | null) => void
+  setActiveSheet: (id: string | null) => void
   setDirty: (dirty: boolean) => void
 
   // Manuscript actions
@@ -81,9 +83,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isLoading: false,
   isDirty: false,
   activeDocumentId: null,
+  activeSheetId: null,
 
   setProject: (project, path) => {
-    set({ project, projectPath: path, isDirty: false })
+    set({ project, projectPath: path, isDirty: false, activeSheetId: null })
     localStorage.setItem('lastProjectPath', path)
   },
 
@@ -96,7 +99,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
-  setActiveDocument: (id) => set({ activeDocumentId: id }),
+  setActiveDocument: (id) => set({ activeDocumentId: id, activeSheetId: null }),
+
+  setActiveSheet: (id) => set({ activeSheetId: id }),
 
   setDirty: (dirty) => set({ isDirty: dirty }),
 

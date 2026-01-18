@@ -193,14 +193,89 @@ function ManuscriptTreeItem({
 }
 
 function SheetsPanel() {
-  const { project } = useProjectStore()
+  const { project, addSheet, activeSheetId, setActiveSheet } = useProjectStore()
+
   if (!project) return null
 
+  const createSheet = (type: 'character' | 'location' | 'plot' | 'note') => {
+    const now = new Date().toISOString()
+    const baseSheet = {
+      id: crypto.randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    let newSheet
+    switch (type) {
+      case 'character':
+        newSheet = {
+          ...baseSheet,
+          type: 'character' as const,
+          name: 'Nouveau personnage',
+          role: 'secondary' as const,
+          description: '',
+        }
+        break
+      case 'location':
+        newSheet = {
+          ...baseSheet,
+          type: 'location' as const,
+          name: 'Nouveau lieu',
+          description: '',
+        }
+        break
+      case 'plot':
+        newSheet = {
+          ...baseSheet,
+          type: 'plot' as const,
+          name: 'Nouvelle intrigue',
+          plotType: 'subplot' as const,
+          description: '',
+        }
+        break
+      case 'note':
+        newSheet = {
+          ...baseSheet,
+          type: 'note' as const,
+          name: 'Nouvelle note',
+          content: '',
+        }
+        break
+    }
+
+    addSheet(newSheet)
+    setActiveSheet(newSheet.id)
+  }
+
   const sheetCategories = [
-    { key: 'characters', label: 'Personnages', icon: <Users size={14} />, count: project.sheets.characters.length },
-    { key: 'locations', label: 'Lieux', icon: <MapPin size={14} />, count: project.sheets.locations.length },
-    { key: 'plots', label: 'Intrigues', icon: <GitBranch size={14} />, count: project.sheets.plots.length },
-    { key: 'notes', label: 'Notes', icon: <StickyNote size={14} />, count: project.sheets.notes.length }
+    {
+      key: 'characters' as const,
+      type: 'character' as const,
+      label: 'Personnages',
+      icon: <Users size={14} />,
+      items: project.sheets.characters
+    },
+    {
+      key: 'locations' as const,
+      type: 'location' as const,
+      label: 'Lieux',
+      icon: <MapPin size={14} />,
+      items: project.sheets.locations
+    },
+    {
+      key: 'plots' as const,
+      type: 'plot' as const,
+      label: 'Intrigues',
+      icon: <GitBranch size={14} />,
+      items: project.sheets.plots
+    },
+    {
+      key: 'notes' as const,
+      type: 'note' as const,
+      label: 'Notes',
+      icon: <StickyNote size={14} />,
+      items: project.sheets.notes
+    }
   ]
 
   return (
@@ -211,8 +286,10 @@ function SheetsPanel() {
             <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
               {cat.icon}
               <span>{cat.label}</span>
+              <span className="text-[10px]">({cat.items.length})</span>
             </div>
             <button
+              onClick={() => createSheet(cat.type)}
               className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
               title={`Ajouter ${cat.label.toLowerCase()}`}
             >
@@ -220,13 +297,27 @@ function SheetsPanel() {
             </button>
           </div>
 
-          {cat.count === 0 ? (
-            <p className="text-xs text-muted-foreground px-2 py-2">
+          {cat.items.length === 0 ? (
+            <p className="text-xs text-muted-foreground pl-6 py-1 italic">
               Aucun {cat.label.toLowerCase()}
             </p>
           ) : (
             <div className="space-y-0.5">
-              {/* Sheet items would go here */}
+              {cat.items.map((sheet) => (
+                <button
+                  key={sheet.id}
+                  onClick={() => setActiveSheet(sheet.id)}
+                  className={cn(
+                    'w-full flex items-center gap-2 pl-6 pr-2 py-1.5 rounded text-sm transition-colors text-left',
+                    activeSheetId === sheet.id
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-foreground hover:bg-accent'
+                  )}
+                >
+                  <FileText size={12} className="text-muted-foreground shrink-0" />
+                  <span className="truncate flex-1">{sheet.name}</span>
+                </button>
+              ))}
             </div>
           )}
         </div>

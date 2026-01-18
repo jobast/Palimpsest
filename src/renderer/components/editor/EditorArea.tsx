@@ -15,13 +15,14 @@ import { useWritingTimer } from '@/hooks/useWritingTimer'
 import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, PageBreakDecorations } from './extensions'
 import type { WordStatsData } from './extensions'
 import { PagedEditor } from './PagedEditor'
+import { SheetEditor } from './SheetEditor'
 import { ViewModeToggle } from './ViewModeToggle'
 
 /**
  * Editor Area - Main container for the paginated editor
  */
 export function EditorArea() {
-  const { activeDocumentId, project } = useProjectStore()
+  const { activeDocumentId, activeSheetId, project } = useProjectStore()
   const {
     setEditor,
     getDocumentContent,
@@ -129,6 +130,11 @@ export function EditorArea() {
 
   if (!project) {
     return null
+  }
+
+  // Show sheet editor if a sheet is active
+  if (activeSheetId) {
+    return <SheetEditor />
   }
 
   if (!activeDocumentId) {
