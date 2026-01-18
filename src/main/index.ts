@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import { createApplicationMenu } from './menu'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -35,6 +36,9 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+
+  // Create application menu
+  createApplicationMenu(mainWindow)
 }
 
 app.whenReady().then(() => {

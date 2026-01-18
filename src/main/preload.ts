@@ -1,4 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron'
+const { contextBridge, ipcRenderer } = require('electron')
+
+console.log('Preload script loading...')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Dialog operations
@@ -16,5 +18,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exists: (filePath: string) => ipcRenderer.invoke('fs:exists', filePath),
 
   // App info
-  platform: process.platform
+  platform: process.platform,
+
+  // Menu action listeners
+  onMenuAction: (callback: (action: string) => void) => {
+    const actions = ['new-project', 'open-project', 'save-project', 'toggle-focus-mode']
+    actions.forEach(action => {
+      ipcRenderer.on(`menu:${action}`, () => callback(action))
+    })
+  },
+
+  removeMenuListeners: () => {
+    const actions = ['new-project', 'open-project', 'save-project', 'toggle-focus-mode']
+    actions.forEach(action => {
+      ipcRenderer.removeAllListeners(`menu:${action}`)
+    })
+  }
 })

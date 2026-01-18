@@ -26,10 +26,21 @@ export function Layout() {
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Titlebar drag region for macOS */}
-      <div className="h-8 titlebar-drag-region bg-background border-b border-border flex items-center px-20">
-        <span className="text-xs text-muted-foreground">{project.meta.name}</span>
-      </div>
+      {/* Titlebar drag region for macOS - hidden in focus mode */}
+      {!focusMode && (
+        <div className="h-8 titlebar-drag-region bg-background border-b border-border flex items-center px-20">
+          <span className="text-xs text-muted-foreground">{project.meta.name}</span>
+        </div>
+      )}
+
+      {/* Focus mode exit hint */}
+      {focusMode && (
+        <div className="absolute top-4 right-4 z-50 opacity-0 hover:opacity-100 transition-opacity duration-300">
+          <div className="text-xs text-muted-foreground bg-card/80 backdrop-blur px-3 py-1.5 rounded-full border border-border shadow-sm">
+            Appuyez sur <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">⌘⇧F</kbd> pour quitter
+          </div>
+        </div>
+      )}
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">

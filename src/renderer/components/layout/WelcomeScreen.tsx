@@ -64,7 +64,7 @@ function WelcomeButton({
   )
 }
 
-function NewProjectForm({ onCancel }: { onCancel: () => void }) {
+export function NewProjectForm({ onCancel, isModal = false }: { onCancel: () => void; isModal?: boolean }) {
   const { createNewProject } = useProjectStore()
   const [name, setName] = useState('')
   const [author, setAuthor] = useState('')
@@ -75,76 +75,89 @@ function NewProjectForm({ onCancel }: { onCancel: () => void }) {
     await createNewProject(name, author, selectedTemplate)
   }
 
+  const content = (
+    <div className="w-full max-w-md">
+      <h2 className="text-2xl font-serif font-bold mb-6">Nouveau projet</h2>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Titre du projet</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Mon roman"
+            className="w-full px-3 py-2 rounded border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Auteur</label>
+          <input
+            type="text"
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+            placeholder="Votre nom"
+            className="w-full px-3 py-2 rounded border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Format de manuscrit</label>
+          <div className="grid grid-cols-2 gap-2">
+            {defaultTemplates.map((template) => (
+              <button
+                key={template.id}
+                onClick={() => setSelectedTemplate(template.id)}
+                className={cn(
+                  'p-3 rounded border text-left transition-colors',
+                  selectedTemplate === template.id
+                    ? 'border-primary bg-primary/5'
+                    : 'border-input hover:border-primary/50'
+                )}
+              >
+                <div className="text-sm font-medium">{template.name}</div>
+                <div className="text-xs text-muted-foreground">{template.description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-3 mt-8">
+        <button
+          onClick={onCancel}
+          className="flex-1 px-4 py-2 rounded border border-input hover:bg-accent transition-colors"
+        >
+          Annuler
+        </button>
+        <button
+          onClick={handleCreate}
+          disabled={!name.trim()}
+          className="flex-1 px-4 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Créer
+        </button>
+      </div>
+    </div>
+  )
+
+  if (isModal) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-background rounded-xl shadow-2xl p-8">
+          {content}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-screen flex flex-col items-center justify-center bg-background p-8">
       {/* Title bar drag region */}
       <div className="fixed top-0 left-0 right-0 h-8 titlebar-drag-region" />
-
-      <div className="w-full max-w-md">
-        <h2 className="text-2xl font-serif font-bold mb-6">Nouveau projet</h2>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Titre du projet</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Mon roman"
-              className="w-full px-3 py-2 rounded border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-              autoFocus
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Auteur</label>
-            <input
-              type="text"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              placeholder="Votre nom"
-              className="w-full px-3 py-2 rounded border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2">Format de manuscrit</label>
-            <div className="grid grid-cols-2 gap-2">
-              {defaultTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  onClick={() => setSelectedTemplate(template.id)}
-                  className={cn(
-                    'p-3 rounded border text-left transition-colors',
-                    selectedTemplate === template.id
-                      ? 'border-primary bg-primary/5'
-                      : 'border-input hover:border-primary/50'
-                  )}
-                >
-                  <div className="text-sm font-medium">{template.name}</div>
-                  <div className="text-xs text-muted-foreground">{template.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-3 mt-8">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-4 py-2 rounded border border-input hover:bg-accent transition-colors"
-          >
-            Annuler
-          </button>
-          <button
-            onClick={handleCreate}
-            disabled={!name.trim()}
-            className="flex-1 px-4 py-2 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Créer
-          </button>
-        </div>
-      </div>
+      {content}
     </div>
   )
 }

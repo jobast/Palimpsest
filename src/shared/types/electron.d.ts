@@ -20,6 +20,8 @@ export interface SaveDialogResult {
   filePath?: string
 }
 
+export type MenuAction = 'new-project' | 'open-project' | 'save-project' | 'toggle-focus-mode'
+
 export interface ElectronAPI {
   openProject: () => Promise<DialogResult>
   saveProject: () => Promise<SaveDialogResult>
@@ -29,6 +31,8 @@ export interface ElectronAPI {
   readDirectory: (dirPath: string) => Promise<DirectoryResult>
   exists: (filePath: string) => Promise<boolean>
   platform: NodeJS.Platform
+  onMenuAction: (callback: (action: MenuAction) => void) => void
+  removeMenuListeners: () => void
 }
 
 declare global {
