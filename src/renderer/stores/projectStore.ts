@@ -23,12 +23,14 @@ interface ProjectState {
   addManuscriptItem: (item: ManuscriptItem, parentId?: string) => void
   updateManuscriptItem: (id: string, updates: Partial<ManuscriptItem>) => void
   deleteManuscriptItem: (id: string) => void
+  duplicateManuscriptItem: (id: string) => void
   reorderManuscriptItems: (items: ManuscriptItem[]) => void
 
   // Sheet actions
   addSheet: (sheet: Sheet) => void
   updateSheet: (id: string, updates: Partial<Sheet>) => void
   deleteSheet: (id: string) => void
+  duplicateSheet: (id: string) => void
 
   // File operations
   createNewProject: (name: string, author: string, template: string) => Promise<void>
@@ -188,6 +190,47 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
+  duplicateManuscriptItem: (id) => {
+    const { project } = get()
+    if (!project) return
+
+    // Deep clone function for manuscript items
+    const cloneItem = (item: ManuscriptItem): ManuscriptItem => ({
+      ...item,
+      id: crypto.randomUUID(),
+      title: `${item.title} (copie)`,
+      children: item.children ? item.children.map(cloneItem) : undefined
+    })
+
+    // Find and duplicate item
+    const duplicateInItems = (items: ManuscriptItem[]): ManuscriptItem[] => {
+      const result: ManuscriptItem[] = []
+      for (const item of items) {
+        result.push(item)
+        if (item.id === id) {
+          result.push(cloneItem(item))
+        } else if (item.children) {
+          // Check if item to duplicate is in children
+          const newChildren = duplicateInItems(item.children)
+          if (newChildren.length !== item.children.length) {
+            result[result.length - 1] = { ...item, children: newChildren }
+          }
+        }
+      }
+      return result
+    }
+
+    set({
+      project: {
+        ...project,
+        manuscript: {
+          items: duplicateInItems(project.manuscript.items)
+        }
+      },
+      isDirty: true
+    })
+  },
+
   reorderManuscriptItems: (items) => {
     const { project } = get()
     if (!project) return
@@ -256,6 +299,33 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       },
       isDirty: true
     })
+  },
+
+  duplicateSheet: (id) => {
+    const { project, addSheet, setActiveSheet } = get()
+    if (!project) return
+
+    // Find the sheet to duplicate
+    const allSheets: Sheet[] = [
+      ...project.sheets.characters,
+      ...project.sheets.locations,
+      ...project.sheets.plots,
+      ...project.sheets.notes
+    ]
+    const sheet = allSheets.find(s => s.id === id)
+    if (!sheet) return
+
+    const now = new Date().toISOString()
+    const newSheet: Sheet = {
+      ...sheet,
+      id: crypto.randomUUID(),
+      name: `${sheet.name} (copie)`,
+      createdAt: now,
+      updatedAt: now
+    }
+
+    addSheet(newSheet)
+    setActiveSheet(newSheet.id)
   },
 
   createNewProject: async (name, author, template) => {

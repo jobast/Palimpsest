@@ -14,12 +14,30 @@ import {
   ChevronDown,
   Folder,
   LayoutGrid,
-  Globe
+  Globe,
+  Pencil,
+  Copy,
+  Trash2,
+  CheckCircle,
+  Clock,
+  FileCheck,
+  Map
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ManuscriptItem, LocationSheet } from '@shared/types/project'
+import type { ManuscriptItem, LocationSheet, CharacterSheet, PlotSheet } from '@shared/types/project'
 import { useState } from 'react'
 import { GlobalMapView } from '../maps/GlobalMapView'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+  ContextMenuShortcut
+} from '../ui/ContextMenu'
 
 export function Sidebar() {
   const { sidebarPanel, setSidebarPanel } = useUIStore()
@@ -87,7 +105,15 @@ function SidebarTab({
 }
 
 function ManuscriptPanel() {
-  const { project, activeDocumentId, setActiveDocument, addManuscriptItem } = useProjectStore()
+  const {
+    project,
+    activeDocumentId,
+    setActiveDocument,
+    addManuscriptItem,
+    updateManuscriptItem,
+    deleteManuscriptItem,
+    duplicateManuscriptItem
+  } = useProjectStore()
 
   if (!project) return null
 
@@ -124,6 +150,10 @@ function ManuscriptPanel() {
             item={item}
             activeId={activeDocumentId}
             onSelect={setActiveDocument}
+            onUpdate={updateManuscriptItem}
+            onDelete={deleteManuscriptItem}
+            onDuplicate={duplicateManuscriptItem}
+            onAddChild={addManuscriptItem}
             depth={0}
           />
         ))}
@@ -136,46 +166,164 @@ function ManuscriptTreeItem({
   item,
   activeId,
   onSelect,
+  onUpdate,
+  onDelete,
+  onDuplicate,
+  onAddChild,
   depth
 }: {
   item: ManuscriptItem
   activeId: string | null
   onSelect: (id: string) => void
+  onUpdate: (id: string, updates: Partial<ManuscriptItem>) => void
+  onDelete: (id: string) => void
+  onDuplicate: (id: string) => void
+  onAddChild: (item: ManuscriptItem, parentId?: string) => void
   depth: number
 }) {
   const [expanded, setExpanded] = useState(true)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState(item.title)
   const hasChildren = item.children && item.children.length > 0
 
   const icon = item.type === 'folder' ? <Folder size={14} /> : <FileText size={14} />
 
+  const handleRename = () => {
+    if (renameValue.trim() && renameValue !== item.title) {
+      onUpdate(item.id, { title: renameValue.trim() })
+    }
+    setIsRenaming(false)
+  }
+
+  const handleAddScene = () => {
+    onAddChild({
+      id: crypto.randomUUID(),
+      type: 'scene',
+      title: `Scene ${(item.children?.length || 0) + 1}`,
+      status: 'draft',
+      wordCount: 0
+    }, item.id)
+  }
+
+  const statusIcons = {
+    draft: <Clock size={12} className="text-muted-foreground" />,
+    revision: <Pencil size={12} className="text-yellow-500" />,
+    final: <FileCheck size={12} className="text-green-500" />
+  }
+
   return (
     <div>
-      <button
-        onClick={() => onSelect(item.id)}
-        className={cn(
-          'w-full flex items-center gap-1 px-2 py-1.5 rounded text-sm transition-colors',
-          activeId === item.id
-            ? 'bg-primary/10 text-primary'
-            : 'text-foreground hover:bg-accent'
-        )}
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-      >
-        {hasChildren && (
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
           <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setExpanded(!expanded)
-            }}
-            className="p-0.5 hover:bg-accent rounded"
+            onClick={() => onSelect(item.id)}
+            className={cn(
+              'w-full flex items-center gap-1 px-2 py-1.5 rounded text-sm transition-colors',
+              activeId === item.id
+                ? 'bg-primary/10 text-primary'
+                : 'text-foreground hover:bg-accent'
+            )}
+            style={{ paddingLeft: `${depth * 12 + 8}px` }}
           >
-            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {hasChildren && (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setExpanded(!expanded)
+                }}
+                className="p-0.5 hover:bg-accent rounded cursor-pointer"
+              >
+                {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </span>
+            )}
+            {!hasChildren && <span className="w-4" />}
+            {icon}
+            {isRenaming ? (
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={handleRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleRename()
+                  if (e.key === 'Escape') {
+                    setRenameValue(item.title)
+                    setIsRenaming(false)
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                className="flex-1 bg-background border border-border rounded px-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            ) : (
+              <span className="truncate flex-1 text-left">{item.title}</span>
+            )}
+            {!isRenaming && (
+              <>
+                {statusIcons[item.status]}
+                <span className="text-xs text-muted-foreground">{item.wordCount}</span>
+              </>
+            )}
           </button>
-        )}
-        {!hasChildren && <span className="w-4" />}
-        {icon}
-        <span className="truncate flex-1 text-left">{item.title}</span>
-        <span className="text-xs text-muted-foreground">{item.wordCount}</span>
-      </button>
+        </ContextMenuTrigger>
+
+        <ContextMenuContent className="w-48">
+          <ContextMenuItem onClick={() => setIsRenaming(true)}>
+            <Pencil size={14} className="mr-2" />
+            Renommer
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => onDuplicate(item.id)}>
+            <Copy size={14} className="mr-2" />
+            Dupliquer
+          </ContextMenuItem>
+
+          <ContextMenuSeparator />
+
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <CheckCircle size={14} className="mr-2" />
+              Statut
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              <ContextMenuItem onClick={() => onUpdate(item.id, { status: 'draft' })}>
+                <Clock size={14} className="mr-2" />
+                Brouillon
+                {item.status === 'draft' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onUpdate(item.id, { status: 'revision' })}>
+                <Pencil size={14} className="mr-2" />
+                Revision
+                {item.status === 'revision' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => onUpdate(item.id, { status: 'final' })}>
+                <FileCheck size={14} className="mr-2" />
+                Final
+                {item.status === 'final' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+
+          {item.type === 'chapter' && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={handleAddScene}>
+                <Plus size={14} className="mr-2" />
+                Ajouter une scene
+              </ContextMenuItem>
+            </>
+          )}
+
+          <ContextMenuSeparator />
+
+          <ContextMenuItem
+            onClick={() => onDelete(item.id)}
+            destructive
+          >
+            <Trash2 size={14} className="mr-2" />
+            Supprimer
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {hasChildren && expanded && (
         <div>
@@ -185,6 +333,10 @@ function ManuscriptTreeItem({
               item={child}
               activeId={activeId}
               onSelect={onSelect}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+              onDuplicate={onDuplicate}
+              onAddChild={onAddChild}
               depth={depth + 1}
             />
           ))}
@@ -195,7 +347,15 @@ function ManuscriptTreeItem({
 }
 
 function SheetsPanel() {
-  const { project, addSheet, activeSheetId, setActiveSheet } = useProjectStore()
+  const {
+    project,
+    addSheet,
+    activeSheetId,
+    setActiveSheet,
+    updateSheet,
+    deleteSheet,
+    duplicateSheet
+  } = useProjectStore()
   const [showGlobalMap, setShowGlobalMap] = useState(false)
 
   if (!project) return null
@@ -328,26 +488,129 @@ function SheetsPanel() {
               {cat.items.map((sheet) => {
                 // Check if this is a location with coordinates
                 const isGeolocated = cat.type === 'location' && (sheet as LocationSheet).coordinates
+                const characterSheet = cat.type === 'character' ? sheet as CharacterSheet : null
+                const plotSheet = cat.type === 'plot' ? sheet as PlotSheet : null
+                const locationSheet = cat.type === 'location' ? sheet as LocationSheet : null
 
                 return (
-                  <button
-                    key={sheet.id}
-                    onClick={() => setActiveSheet(sheet.id)}
-                    className={cn(
-                      'w-full flex items-center gap-2 pl-6 pr-2 py-1.5 rounded text-sm transition-colors text-left',
-                      activeSheetId === sheet.id
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-foreground hover:bg-accent'
-                    )}
-                  >
-                    <FileText size={12} className="text-muted-foreground shrink-0" />
-                    <span className="truncate flex-1">{sheet.name}</span>
-                    {isGeolocated && (
-                      <span title="Geolocalisee">
-                        <MapPin size={10} className="text-primary shrink-0" />
-                      </span>
-                    )}
-                  </button>
+                  <ContextMenu key={sheet.id}>
+                    <ContextMenuTrigger asChild>
+                      <button
+                        onClick={() => setActiveSheet(sheet.id)}
+                        className={cn(
+                          'w-full flex items-center gap-2 pl-6 pr-2 py-1.5 rounded text-sm transition-colors text-left',
+                          activeSheetId === sheet.id
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-foreground hover:bg-accent'
+                        )}
+                      >
+                        <FileText size={12} className="text-muted-foreground shrink-0" />
+                        <span className="truncate flex-1">{sheet.name}</span>
+                        {isGeolocated && (
+                          <span title="Geolocalisee">
+                            <MapPin size={10} className="text-primary shrink-0" />
+                          </span>
+                        )}
+                      </button>
+                    </ContextMenuTrigger>
+
+                    <ContextMenuContent className="w-48">
+                      <ContextMenuItem onClick={() => duplicateSheet(sheet.id)}>
+                        <Copy size={14} className="mr-2" />
+                        Dupliquer
+                      </ContextMenuItem>
+
+                      {/* Character-specific options */}
+                      {characterSheet && (
+                        <>
+                          <ContextMenuSeparator />
+                          <ContextMenuSub>
+                            <ContextMenuSubTrigger>
+                              <Users size={14} className="mr-2" />
+                              Role
+                            </ContextMenuSubTrigger>
+                            <ContextMenuSubContent>
+                              <ContextMenuItem onClick={() => updateSheet(sheet.id, { role: 'protagonist' })}>
+                                Protagoniste
+                                {characterSheet.role === 'protagonist' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+                              </ContextMenuItem>
+                              <ContextMenuItem onClick={() => updateSheet(sheet.id, { role: 'antagonist' })}>
+                                Antagoniste
+                                {characterSheet.role === 'antagonist' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+                              </ContextMenuItem>
+                              <ContextMenuItem onClick={() => updateSheet(sheet.id, { role: 'secondary' })}>
+                                Secondaire
+                                {characterSheet.role === 'secondary' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+                              </ContextMenuItem>
+                              <ContextMenuItem onClick={() => updateSheet(sheet.id, { role: 'minor' })}>
+                                Mineur
+                                {characterSheet.role === 'minor' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+                              </ContextMenuItem>
+                            </ContextMenuSubContent>
+                          </ContextMenuSub>
+                        </>
+                      )}
+
+                      {/* Location-specific options */}
+                      {locationSheet && (
+                        <>
+                          <ContextMenuSeparator />
+                          {locationSheet.coordinates ? (
+                            <>
+                              <ContextMenuItem onClick={() => {
+                                setActiveSheet(sheet.id)
+                              }}>
+                                <Map size={14} className="mr-2" />
+                                Voir sur la carte
+                              </ContextMenuItem>
+                              <ContextMenuItem onClick={() => updateSheet(sheet.id, { coordinates: undefined, mapZoom: undefined })}>
+                                <MapPin size={14} className="mr-2" />
+                                Effacer coordonnees
+                              </ContextMenuItem>
+                            </>
+                          ) : (
+                            <ContextMenuItem onClick={() => setActiveSheet(sheet.id)}>
+                              <MapPin size={14} className="mr-2" />
+                              Ajouter coordonnees
+                            </ContextMenuItem>
+                          )}
+                        </>
+                      )}
+
+                      {/* Plot-specific options */}
+                      {plotSheet && (
+                        <>
+                          <ContextMenuSeparator />
+                          <ContextMenuSub>
+                            <ContextMenuSubTrigger>
+                              <GitBranch size={14} className="mr-2" />
+                              Type
+                            </ContextMenuSubTrigger>
+                            <ContextMenuSubContent>
+                              <ContextMenuItem onClick={() => updateSheet(sheet.id, { plotType: 'main' })}>
+                                Intrigue principale
+                                {plotSheet.plotType === 'main' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+                              </ContextMenuItem>
+                              <ContextMenuItem onClick={() => updateSheet(sheet.id, { plotType: 'subplot' })}>
+                                Intrigue secondaire
+                                {plotSheet.plotType === 'subplot' && <ContextMenuShortcut>✓</ContextMenuShortcut>}
+                              </ContextMenuItem>
+                            </ContextMenuSubContent>
+                          </ContextMenuSub>
+                        </>
+                      )}
+
+                      <ContextMenuSeparator />
+
+                      <ContextMenuItem
+                        onClick={() => deleteSheet(sheet.id)}
+                        destructive
+                      >
+                        <Trash2 size={14} className="mr-2" />
+                        Supprimer
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 )
               })}
             </div>

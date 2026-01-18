@@ -412,3 +412,96 @@
 .leaflet-control-attribution a {
   color: hsl(var(--primary)) !important;
 }
+
+/* Context Menu Styles */
+[data-radix-menu-content] {
+  animation-duration: 150ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-radix-menu-content][data-state="open"][data-side="bottom"] {
+  animation-name: slideDownAndFade;
+}
+
+[data-radix-menu-content][data-state="open"][data-side="top"] {
+  animation-name: slideUpAndFade;
+}
+
+[data-radix-menu-content][data-state="open"][data-side="right"] {
+  animation-name: slideRightAndFade;
+}
+
+[data-radix-menu-content][data-state="open"][data-side="left"] {
+  animation-name: slideLeftAndFade;
+}
+
+@keyframes slideDownAndFade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideUpAndFade {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideRightAndFade {
+  from {
+    opacity: 0;
+    transform: translateX(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes slideLeftAndFade {
+  from {
+    opacity: 0;
+    transform: translateX(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Context menu item hover effect */
+[data-radix-menu-content] [role="menuitem"]:focus {
+  outline: none;
+}
+
+/* Ensure context menus appear above everything */
+[data-radix-popper-content-wrapper] {
+  z-index: 100 !important;
+}
+
+/* Ensure context menu has solid opaque background */
+[data-radix-menu-content] {
+  background-color: hsl(var(--card)) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Light mode: pure white background */
+:root [data-radix-menu-content] {
+  background-color: #ffffff !important;
+}
+
+/* Dark mode: solid dark background */
+.dark [data-radix-menu-content] {
+  background-color: hsl(0 0% 12%) !important;
+}

@@ -3,7 +3,18 @@ import { EditorContent } from '@tiptap/react'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { getPageDimensions } from '@/lib/pagination'
-import { ChevronUp, ChevronDown } from 'lucide-react'
+import { ChevronUp, ChevronDown, Scissors, Copy, ClipboardPaste, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, MessageSquareQuote } from 'lucide-react'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+  ContextMenuShortcut,
+} from '@/components/ui/ContextMenu'
 
 /**
  * PagedEditor Component
@@ -21,6 +32,71 @@ export function PagedEditor() {
   const { totalPages, currentPage, setCurrentPage } = usePaginationStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const [showPageNav, setShowPageNav] = useState(false)
+  const [hasSelection, setHasSelection] = useState(false)
+
+  // Track if editor has text selection
+  useEffect(() => {
+    if (!editor) return
+
+    const updateSelection = () => {
+      const { from, to } = editor.state.selection
+      setHasSelection(from !== to)
+    }
+
+    editor.on('selectionUpdate', updateSelection)
+    editor.on('transaction', updateSelection)
+
+    return () => {
+      editor.off('selectionUpdate', updateSelection)
+      editor.off('transaction', updateSelection)
+    }
+  }, [editor])
+
+  // Context menu actions
+  const handleCut = useCallback(() => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    const text = editor.state.doc.textBetween(from, to)
+    navigator.clipboard.writeText(text)
+    editor.chain().focus().deleteSelection().run()
+  }, [editor])
+
+  const handleCopy = useCallback(() => {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    const text = editor.state.doc.textBetween(from, to)
+    navigator.clipboard.writeText(text)
+  }, [editor])
+
+  const handlePaste = useCallback(async () => {
+    if (!editor) return
+    const text = await navigator.clipboard.readText()
+    editor.chain().focus().insertContent(text).run()
+  }, [editor])
+
+  const handleBold = useCallback(() => {
+    editor?.chain().focus().toggleBold().run()
+  }, [editor])
+
+  const handleItalic = useCallback(() => {
+    editor?.chain().focus().toggleItalic().run()
+  }, [editor])
+
+  const handleUnderline = useCallback(() => {
+    editor?.chain().focus().toggleUnderline().run()
+  }, [editor])
+
+  const handleAlign = useCallback((align: 'left' | 'center' | 'right' | 'justify') => {
+    editor?.chain().focus().setTextAlign(align).run()
+  }, [editor])
+
+  const handleInsertSceneBreak = useCallback(() => {
+    editor?.chain().focus().insertContent('<p style="text-align: center">* * *</p>').run()
+  }, [editor])
+
+  const handleInsertDialogueDash = useCallback(() => {
+    editor?.chain().focus().insertContent('— ').run()
+  }, [editor])
 
   // Get page dimensions from template
   const dims = useMemo(() => {
@@ -165,21 +241,106 @@ export function PagedEditor() {
           ))}
 
           {/* Editor content - positioned to flow through page content areas */}
-          <div
-            className="absolute manuscript-content"
-            style={{
-              top: dims.marginTop + headerHeight,
-              left: dims.marginLeft,
-              width: dims.width - dims.marginLeft - dims.marginRight,
-              fontFamily: currentTemplate.typography.fontFamily,
-              fontSize: currentTemplate.typography.fontSize,
-              lineHeight: currentTemplate.typography.lineHeight,
-              color: 'hsl(var(--paper-foreground))',
-              '--first-line-indent': currentTemplate.typography.firstLineIndent,
-            } as React.CSSProperties}
-          >
-            <EditorContent editor={editor} />
-          </div>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <div
+                className="absolute manuscript-content"
+                style={{
+                  top: dims.marginTop + headerHeight,
+                  left: dims.marginLeft,
+                  width: dims.width - dims.marginLeft - dims.marginRight,
+                  fontFamily: currentTemplate.typography.fontFamily,
+                  fontSize: currentTemplate.typography.fontSize,
+                  lineHeight: currentTemplate.typography.lineHeight,
+                  color: 'hsl(var(--paper-foreground))',
+                  '--first-line-indent': currentTemplate.typography.firstLineIndent,
+                } as React.CSSProperties}
+              >
+                <EditorContent editor={editor} />
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-56">
+              {/* Clipboard actions */}
+              {hasSelection && (
+                <>
+                  <ContextMenuItem onSelect={handleCut}>
+                    <Scissors className="mr-2 h-4 w-4" />
+                    Couper
+                    <ContextMenuShortcut>⌘X</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem onSelect={handleCopy}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copier
+                    <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+                  </ContextMenuItem>
+                </>
+              )}
+              <ContextMenuItem onSelect={handlePaste}>
+                <ClipboardPaste className="mr-2 h-4 w-4" />
+                Coller
+                <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+              </ContextMenuItem>
+
+              {/* Formatting actions - only with selection */}
+              {hasSelection && (
+                <>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={handleBold}>
+                    <Bold className="mr-2 h-4 w-4" />
+                    Gras
+                    <ContextMenuShortcut>⌘B</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem onSelect={handleItalic}>
+                    <Italic className="mr-2 h-4 w-4" />
+                    Italique
+                    <ContextMenuShortcut>⌘I</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem onSelect={handleUnderline}>
+                    <Underline className="mr-2 h-4 w-4" />
+                    Souligne
+                    <ContextMenuShortcut>⌘U</ContextMenuShortcut>
+                  </ContextMenuItem>
+
+                  <ContextMenuSeparator />
+                  <ContextMenuSub>
+                    <ContextMenuSubTrigger>
+                      <AlignLeft className="mr-2 h-4 w-4" />
+                      Alignement
+                    </ContextMenuSubTrigger>
+                    <ContextMenuSubContent>
+                      <ContextMenuItem onSelect={() => handleAlign('left')}>
+                        <AlignLeft className="mr-2 h-4 w-4" />
+                        Gauche
+                      </ContextMenuItem>
+                      <ContextMenuItem onSelect={() => handleAlign('center')}>
+                        <AlignCenter className="mr-2 h-4 w-4" />
+                        Centre
+                      </ContextMenuItem>
+                      <ContextMenuItem onSelect={() => handleAlign('right')}>
+                        <AlignRight className="mr-2 h-4 w-4" />
+                        Droite
+                      </ContextMenuItem>
+                      <ContextMenuItem onSelect={() => handleAlign('justify')}>
+                        <AlignJustify className="mr-2 h-4 w-4" />
+                        Justifie
+                      </ContextMenuItem>
+                    </ContextMenuSubContent>
+                  </ContextMenuSub>
+                </>
+              )}
+
+              {/* Insert actions */}
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={handleInsertSceneBreak}>
+                <Minus className="mr-2 h-4 w-4" />
+                Inserer saut de scene
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={handleInsertDialogueDash}>
+                <MessageSquareQuote className="mr-2 h-4 w-4" />
+                Inserer tiret de dialogue
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         </div>
       </div>
 
