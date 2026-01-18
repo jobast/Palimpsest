@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -7,11 +7,25 @@ import { createApplicationMenu } from './menu'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// Set app name for macOS menu bar (must be before app.whenReady)
+app.setName('Palimpseste')
+
 let mainWindow: BrowserWindow | null = null
 
 const isDev = process.env.NODE_ENV !== 'production'
 
 function createWindow() {
+  // Set dock icon on macOS during development
+  if (process.platform === 'darwin') {
+    const iconPath = isDev
+      ? path.join(__dirname, '../../build/icon.png')
+      : path.join(__dirname, '../build/icon.png')
+
+    if (fs.existsSync(iconPath)) {
+      const icon = nativeImage.createFromPath(iconPath)
+      app.dock.setIcon(icon)
+    }
+  }
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
