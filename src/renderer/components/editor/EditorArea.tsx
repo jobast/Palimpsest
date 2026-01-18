@@ -16,7 +16,6 @@ import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, Page
 import type { WordStatsData } from './extensions'
 import { PagedEditor } from './PagedEditor'
 import { SheetEditor } from './SheetEditor'
-import { ViewModeToggle } from './ViewModeToggle'
 
 /**
  * Editor Area - Main container for the paginated editor
@@ -147,7 +146,6 @@ export function EditorArea() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
-      <ViewModeToggle />
       <PagedEditor />
     </div>
   )

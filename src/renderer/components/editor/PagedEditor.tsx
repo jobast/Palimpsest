@@ -16,6 +16,7 @@ import {
   ContextMenuTrigger,
   ContextMenuShortcut,
 } from '@/components/ui/ContextMenu'
+import { ViewModeToggle } from './ViewModeToggle'
 
 /**
  * PagedEditor Component
@@ -415,8 +416,12 @@ export function PagedEditor() {
         </div>
       )}
 
-      {/* Zoom controls */}
+      {/* Bottom left controls: View mode toggle + Zoom */}
       <div className="absolute bottom-4 left-4 flex items-center gap-2 z-10">
+        {/* View mode toggle */}
+        <ViewModeToggle />
+
+        {/* Zoom controls */}
         <button
           onClick={zoomOut}
           disabled={zoomLevel <= 50}
