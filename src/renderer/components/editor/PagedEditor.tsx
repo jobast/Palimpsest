@@ -2,8 +2,9 @@ import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { EditorContent } from '@tiptap/react'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
+import { useUIStore } from '@/stores/uiStore'
 import { getPageDimensions } from '@/lib/pagination'
-import { ChevronUp, ChevronDown, Scissors, Copy, ClipboardPaste, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, MessageSquareQuote } from 'lucide-react'
+import { ChevronUp, ChevronDown, Scissors, Copy, ClipboardPaste, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, MessageSquareQuote, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -30,9 +31,13 @@ import {
 export function PagedEditor() {
   const { editor, currentTemplate } = useEditorStore()
   const { totalPages, currentPage, setCurrentPage } = usePaginationStore()
+  const { zoomLevel, setZoomLevel, zoomIn, zoomOut, resetZoom } = useUIStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const [showPageNav, setShowPageNav] = useState(false)
   const [hasSelection, setHasSelection] = useState(false)
+
+  // Zoom scale factor
+  const scale = zoomLevel / 100
 
   // Track if editor has text selection
   useEffect(() => {
@@ -179,14 +184,24 @@ export function PagedEditor() {
         onScroll={handleScroll}
         style={{ paddingTop: 40, paddingBottom: 40 }}
       >
-        {/* Pages container - holds all page frames and editor content */}
+        {/* Zoom wrapper - centers and scales the pages */}
         <div
-          className="relative mx-auto"
+          className="flex justify-center"
           style={{
-            width: dims.width,
-            height: totalHeight,
+            width: '100%',
+            minHeight: totalHeight * scale + 80,
           }}
         >
+          {/* Pages container - holds all page frames and editor content */}
+          <div
+            className="relative"
+            style={{
+              width: dims.width,
+              height: totalHeight,
+              transform: `scale(${scale})`,
+              transformOrigin: 'top center',
+            }}
+          >
           {/* Page frames - visual containers for each page */}
           {pageNumbers.map((pageNum) => (
             <div
@@ -341,10 +356,11 @@ export function PagedEditor() {
               </ContextMenuItem>
             </ContextMenuContent>
           </ContextMenu>
+          </div>
         </div>
       </div>
 
-      {/* Floating page navigator */}
+      {/* Floating page navigator and zoom controls */}
       {totalPages > 0 && (
         <div className="absolute bottom-4 right-4 flex items-center gap-1 z-10">
           <button
@@ -397,6 +413,47 @@ export function PagedEditor() {
           </button>
         </div>
       )}
+
+      {/* Zoom controls */}
+      <div className="absolute bottom-4 left-4 flex items-center gap-2 z-10">
+        <button
+          onClick={zoomOut}
+          disabled={zoomLevel <= 50}
+          className="p-1.5 rounded-lg bg-card border border-border shadow-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="Zoom arrière"
+        >
+          <ZoomOut size={16} />
+        </button>
+
+        <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-card border border-border shadow-md">
+          <input
+            type="range"
+            min={50}
+            max={200}
+            step={10}
+            value={zoomLevel}
+            onChange={(e) => setZoomLevel(Number(e.target.value))}
+            className="w-24 h-1.5 accent-primary cursor-pointer"
+            title={`Zoom: ${zoomLevel}%`}
+          />
+          <button
+            onClick={resetZoom}
+            className="text-xs font-medium text-muted-foreground hover:text-foreground min-w-[40px] text-center"
+            title="Réinitialiser le zoom"
+          >
+            {zoomLevel}%
+          </button>
+        </div>
+
+        <button
+          onClick={zoomIn}
+          disabled={zoomLevel >= 200}
+          className="p-1.5 rounded-lg bg-card border border-border shadow-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="Zoom avant"
+        >
+          <ZoomIn size={16} />
+        </button>
+      </div>
     </div>
   )
 }

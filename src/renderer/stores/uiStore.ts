@@ -17,6 +17,9 @@ interface UIState {
   autoSaveEnabled: boolean
   autoSaveInterval: number // in seconds
 
+  // Zoom settings
+  zoomLevel: number // percentage (50-200)
+
   // Actions
   toggleSidebar: () => void
   setSidebarPanel: (panel: SidebarPanel) => void
@@ -29,6 +32,10 @@ interface UIState {
   closeSettings: () => void
   setAutoSaveEnabled: (enabled: boolean) => void
   setAutoSaveInterval: (seconds: number) => void
+  setZoomLevel: (level: number) => void
+  zoomIn: () => void
+  zoomOut: () => void
+  resetZoom: () => void
 }
 
 // Apply theme to document
@@ -60,6 +67,9 @@ export const useUIStore = create<UIState>()(
       autoSaveEnabled: true,
       autoSaveInterval: 30,
 
+      // Zoom settings (default: 100%)
+      zoomLevel: 100,
+
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
       setSidebarPanel: (panel) => set({ sidebarPanel: panel, sidebarOpen: true }),
@@ -85,21 +95,20 @@ export const useUIStore = create<UIState>()(
       openSettings: () => set({ settingsOpen: true }),
       closeSettings: () => set({ settingsOpen: false }),
       setAutoSaveEnabled: (enabled) => set({ autoSaveEnabled: enabled }),
-      setAutoSaveInterval: (seconds) => set({ autoSaveInterval: seconds })
+      setAutoSaveInterval: (seconds) => set({ autoSaveInterval: seconds }),
+      setZoomLevel: (level) => set({ zoomLevel: Math.min(200, Math.max(50, level)) }),
+      zoomIn: () => set((state) => ({ zoomLevel: Math.min(200, state.zoomLevel + 10) })),
+      zoomOut: () => set((state) => ({ zoomLevel: Math.max(50, state.zoomLevel - 10) })),
+      resetZoom: () => set({ zoomLevel: 100 })
     }),
     {
       name: 'palimpseste-ui-settings',
       partialize: (state) => ({
         theme: state.theme,
         autoSaveEnabled: state.autoSaveEnabled,
-        autoSaveInterval: state.autoSaveInterval
-      }),
-      onRehydrate: () => (state) => {
-        // Apply theme when store rehydrates
-        if (state) {
-          applyTheme(state.theme)
-        }
-      }
+        autoSaveInterval: state.autoSaveInterval,
+        zoomLevel: state.zoomLevel
+      })
     }
   )
 )

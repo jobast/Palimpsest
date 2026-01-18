@@ -18,6 +18,8 @@ function App() {
   const toggleFocusMode = useUIStore(state => state.toggleFocusMode)
   const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled)
   const autoSaveInterval = useUIStore(state => state.autoSaveInterval)
+  const theme = useUIStore(state => state.theme)
+  const setTheme = useUIStore(state => state.setTheme)
   const { exportDocx, exportPdf } = useExport()
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const autoSaveTimerRef = useRef<number | null>(null)
@@ -25,6 +27,11 @@ function App() {
   useEffect(() => {
     loadLastProject()
   }, [loadLastProject])
+
+  // Apply theme on initial load
+  useEffect(() => {
+    setTheme(theme)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save logic
   useEffect(() => {

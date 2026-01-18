@@ -45,7 +45,7 @@ export function Toolbar() {
   }
 
   return (
-    <div className="h-10 border-b border-border bg-card flex items-center px-2 gap-1 titlebar-no-drag overflow-hidden min-w-0">
+    <div className="h-10 border-b border-border bg-card flex items-center px-2 gap-1 titlebar-no-drag min-w-0">
       {/* Layout controls */}
       <ToolbarButton icon={<PanelLeft size={16} />} onClick={toggleSidebar} active={sidebarOpen} title="Manuscrit" />
       <ToolbarButton icon={<PanelRight size={16} />} onClick={toggleStatsSidebar} active={statsSidebarOpen} title="Statistiques" />
