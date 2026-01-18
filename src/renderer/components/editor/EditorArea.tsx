@@ -16,6 +16,19 @@ import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, Page
 import type { WordStatsData } from './extensions'
 import { PagedEditor } from './PagedEditor'
 import { SheetEditor } from './SheetEditor'
+import type { ManuscriptItem } from '@shared/types/project'
+
+// Helper to find a manuscript item by ID (recursive)
+function findManuscriptItem(items: ManuscriptItem[], id: string): ManuscriptItem | null {
+  for (const item of items) {
+    if (item.id === id) return item
+    if (item.children) {
+      const found = findManuscriptItem(item.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
 
 /**
  * Editor Area - Main container for the paginated editor
@@ -109,7 +122,7 @@ export function EditorArea() {
 
   // Load document content when active document changes
   useEffect(() => {
-    if (!editor || !activeDocumentId) return
+    if (!editor || !activeDocumentId || !project) return
 
     const savedContent = getDocumentContent(activeDocumentId)
     if (savedContent) {
@@ -119,13 +132,32 @@ export function EditorArea() {
         editor.commands.setContent('')
       }
     } else {
-      editor.commands.setContent('')
+      // Initialize new documents with a chapter title
+      const item = findManuscriptItem(project.manuscript.items, activeDocumentId)
+      if (item && (item.type === 'chapter' || item.type === 'scene')) {
+        // Create initial content with chapter title and empty first paragraph
+        editor.commands.setContent({
+          type: 'doc',
+          content: [
+            {
+              type: 'chapterTitle',
+              content: [{ type: 'text', text: item.title }]
+            },
+            {
+              type: 'firstParagraph',
+              content: []
+            }
+          ]
+        })
+      } else {
+        editor.commands.setContent('')
+      }
     }
 
     editor.commands.resetStats()
     const wordCount = editor.storage.characterCount?.words() ?? 0
     startEditorSession(wordCount)
-  }, [editor, activeDocumentId, getDocumentContent, startEditorSession])
+  }, [editor, activeDocumentId, project, getDocumentContent, startEditorSession])
 
   if (!project) {
     return null
