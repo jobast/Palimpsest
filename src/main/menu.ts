@@ -6,7 +6,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
   const template: Electron.MenuItemConstructorOptions[] = [
     // App menu (macOS only)
     ...(isMac ? [{
-      label: app.name,
+      label: 'Palimpseste',
       submenu: [
         { role: 'about' as const, label: 'A propos de Palimpseste' },
         { type: 'separator' as const },
