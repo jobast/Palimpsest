@@ -178,6 +178,54 @@
 }
 
 /* Page break decoration - creates visual gap between pages */
+.page-break-decoration {
+  position: relative;
+  margin: 0;
+  user-select: none;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Bottom of current page in page break */
+.page-break-bottom {
+  position: absolute;
+  background: hsl(var(--paper));
+  z-index: 2;
+}
+
+/* Top of next page in page break */
+.page-break-top {
+  position: absolute;
+  background: hsl(var(--paper));
+  z-index: 2;
+}
+
+/* Page break footer area (end of previous page) */
+.page-break-footer {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 10pt;
+}
+
+/* Visual gap between pages */
+.page-break-gap {
+  position: absolute;
+  z-index: 1;
+}
+
+/* Page break header area (start of next page) */
+.page-break-header {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 10pt;
+}
+
+/* Legacy page-break class for backwards compatibility */
 .page-break {
   position: relative;
   height: 60px;

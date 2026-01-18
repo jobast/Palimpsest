@@ -63,6 +63,13 @@ export function usePagination() {
           })
 
           setPages(result.pages)
+
+          // Force editor to re-render decorations by dispatching a no-op transaction
+          // This ensures PageBreakDecorations plugin updates with new positions
+          if (editor.view) {
+            const tr = editor.state.tr.setMeta('pagination', true)
+            editor.view.dispatch(tr)
+          }
         } catch (error) {
           console.error('Pagination calculation failed:', error)
           reset()

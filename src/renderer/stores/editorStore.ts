@@ -37,7 +37,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   editor: null,
   currentTemplate: defaultTemplates[0],
   documentContents: new Map(),
-  viewMode: 'text' as ViewMode,
+  viewMode: 'page' as ViewMode,
 
   sessionStartWords: 0,
   currentWords: 0,

@@ -2,3 +2,4 @@
 export { DialogueDash, type DialogueDashOptions } from './DialogueDash'
 export { WordStats, type WordStatsOptions, type WordStatsData } from './WordStats'
 export { SceneBreak, ChapterTitle, FirstParagraph } from './ParagraphStyles'
+export { PageBreakDecorations, type PageBreakDecorationsOptions } from './PageBreakDecorations'

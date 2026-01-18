@@ -12,16 +12,13 @@ import { useProjectStore } from '@/stores/projectStore'
 import { useStatsStore } from '@/stores/statsStore'
 import { usePagination } from '@/hooks/usePagination'
 import { useWritingTimer } from '@/hooks/useWritingTimer'
-import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph } from './extensions'
+import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, PageBreakDecorations } from './extensions'
 import type { WordStatsData } from './extensions'
 import { PagedEditor } from './PagedEditor'
+import { ViewModeToggle } from './ViewModeToggle'
 
 /**
  * Editor Area - Main container for the paginated editor
- *
- * Contains:
- * - A single TipTap editor instance
- * - PagedEditor: Editable view with page visualization
  */
 export function EditorArea() {
   const { activeDocumentId, project } = useProjectStore()
@@ -41,16 +38,14 @@ export function EditorArea() {
   // Initialize writing timer
   useWritingTimer()
 
-  // Word stats callback - update both editorStore and statsStore
+  // Word stats callback
   const handleWordStatsUpdate = useCallback((stats: WordStatsData) => {
-    // Update editor store for display
     updateWordCount(
       stats.totalWords,
       stats.wordsAddedSinceLastUpdate,
       stats.wordsDeletedSinceLastUpdate
     )
 
-    // Update stats store for persistence and goal tracking
     if (stats.wordsAddedSinceLastUpdate > 0 || stats.wordsDeletedSinceLastUpdate > 0) {
       recordActivity(
         stats.totalWords,
@@ -90,7 +85,8 @@ export function EditorArea() {
       WordStats.configure({ onUpdate: handleWordStatsUpdate }),
       SceneBreak,
       ChapterTitle,
-      FirstParagraph
+      FirstParagraph,
+      PageBreakDecorations
     ],
     content: '',
     editorProps: {
@@ -126,18 +122,15 @@ export function EditorArea() {
       editor.commands.setContent('')
     }
 
-    // Reset word stats for new document
     editor.commands.resetStats()
     const wordCount = editor.storage.characterCount?.words() ?? 0
     startEditorSession(wordCount)
   }, [editor, activeDocumentId, getDocumentContent, startEditorSession])
 
-  // No project loaded
   if (!project) {
     return null
   }
 
-  // No document selected
   if (!activeDocumentId) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -147,7 +140,8 @@ export function EditorArea() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden relative">
+      <ViewModeToggle />
       <PagedEditor />
     </div>
   )

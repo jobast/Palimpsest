@@ -11,7 +11,7 @@ export function ViewModeToggle() {
   const { currentPage, totalPages, isCalculating } = usePaginationStore()
 
   return (
-    <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
+    <div className="absolute top-4 left-4 z-50 flex items-center gap-3">
       {/* View mode buttons */}
       <div className="flex gap-1 bg-background/90 backdrop-blur-sm rounded-lg p-1 shadow-md border border-border">
         <button
