@@ -56,6 +56,12 @@ export interface CharacterSheet extends SheetBase {
 export interface LocationSheet extends SheetBase {
   type: 'location'
   description: string
+  // Geographic coordinates for map display
+  coordinates?: {
+    latitude: number
+    longitude: number
+  }
+  mapZoom?: number  // Saved zoom level for this location
   significance?: string
   sensoryDetails?: string
   notes?: string

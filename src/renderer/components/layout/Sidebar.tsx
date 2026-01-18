@@ -13,11 +13,13 @@ import {
   ChevronRight,
   ChevronDown,
   Folder,
-  LayoutGrid
+  LayoutGrid,
+  Globe
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ManuscriptItem } from '@shared/types/project'
+import type { ManuscriptItem, LocationSheet } from '@shared/types/project'
 import { useState } from 'react'
+import { GlobalMapView } from '../maps/GlobalMapView'
 
 export function Sidebar() {
   const { sidebarPanel, setSidebarPanel } = useUIStore()
@@ -194,8 +196,13 @@ function ManuscriptTreeItem({
 
 function SheetsPanel() {
   const { project, addSheet, activeSheetId, setActiveSheet } = useProjectStore()
+  const [showGlobalMap, setShowGlobalMap] = useState(false)
 
   if (!project) return null
+
+  // Count locations with coordinates
+  const locationsWithCoords = project.sheets.locations.filter(l => l.coordinates)
+  const hasGeoLocations = locationsWithCoords.length > 0
 
   const createSheet = (type: 'character' | 'location' | 'plot' | 'note') => {
     const now = new Date().toISOString()
@@ -253,28 +260,40 @@ function SheetsPanel() {
       type: 'character' as const,
       label: 'Personnages',
       icon: <Users size={14} />,
-      items: project.sheets.characters
+      items: project.sheets.characters,
+      extraButton: null
     },
     {
       key: 'locations' as const,
       type: 'location' as const,
       label: 'Lieux',
       icon: <MapPin size={14} />,
-      items: project.sheets.locations
+      items: project.sheets.locations,
+      extraButton: hasGeoLocations ? (
+        <button
+          onClick={() => setShowGlobalMap(true)}
+          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-primary"
+          title="Voir la carte globale"
+        >
+          <Globe size={14} />
+        </button>
+      ) : null
     },
     {
       key: 'plots' as const,
       type: 'plot' as const,
       label: 'Intrigues',
       icon: <GitBranch size={14} />,
-      items: project.sheets.plots
+      items: project.sheets.plots,
+      extraButton: null
     },
     {
       key: 'notes' as const,
       type: 'note' as const,
       label: 'Notes',
       icon: <StickyNote size={14} />,
-      items: project.sheets.notes
+      items: project.sheets.notes,
+      extraButton: null
     }
   ]
 
@@ -288,13 +307,16 @@ function SheetsPanel() {
               <span>{cat.label}</span>
               <span className="text-[10px]">({cat.items.length})</span>
             </div>
-            <button
-              onClick={() => createSheet(cat.type)}
-              className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-              title={`Ajouter ${cat.label.toLowerCase()}`}
-            >
-              <Plus size={14} />
-            </button>
+            <div className="flex items-center gap-1">
+              {cat.extraButton}
+              <button
+                onClick={() => createSheet(cat.type)}
+                className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                title={`Ajouter ${cat.label.toLowerCase()}`}
+              >
+                <Plus size={14} />
+              </button>
+            </div>
           </div>
 
           {cat.items.length === 0 ? (
@@ -303,25 +325,40 @@ function SheetsPanel() {
             </p>
           ) : (
             <div className="space-y-0.5">
-              {cat.items.map((sheet) => (
-                <button
-                  key={sheet.id}
-                  onClick={() => setActiveSheet(sheet.id)}
-                  className={cn(
-                    'w-full flex items-center gap-2 pl-6 pr-2 py-1.5 rounded text-sm transition-colors text-left',
-                    activeSheetId === sheet.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-foreground hover:bg-accent'
-                  )}
-                >
-                  <FileText size={12} className="text-muted-foreground shrink-0" />
-                  <span className="truncate flex-1">{sheet.name}</span>
-                </button>
-              ))}
+              {cat.items.map((sheet) => {
+                // Check if this is a location with coordinates
+                const isGeolocated = cat.type === 'location' && (sheet as LocationSheet).coordinates
+
+                return (
+                  <button
+                    key={sheet.id}
+                    onClick={() => setActiveSheet(sheet.id)}
+                    className={cn(
+                      'w-full flex items-center gap-2 pl-6 pr-2 py-1.5 rounded text-sm transition-colors text-left',
+                      activeSheetId === sheet.id
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-foreground hover:bg-accent'
+                    )}
+                  >
+                    <FileText size={12} className="text-muted-foreground shrink-0" />
+                    <span className="truncate flex-1">{sheet.name}</span>
+                    {isGeolocated && (
+                      <span title="Geolocalisee">
+                        <MapPin size={10} className="text-primary shrink-0" />
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
       ))}
+
+      {/* Global Map Modal */}
+      {showGlobalMap && (
+        <GlobalMapView onClose={() => setShowGlobalMap(false)} />
+      )}
     </div>
   )
 }
