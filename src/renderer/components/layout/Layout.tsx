@@ -7,10 +7,11 @@ import { EditorArea } from '../editor/EditorArea'
 import { WelcomeScreen } from './WelcomeScreen'
 import { StatsPanel } from '../stats/StatsPanel'
 import { FormattingPanel } from '../editor/FormattingPanel'
+import { AnalysisPanel } from '../analysis/AnalysisPanel'
 import { cn } from '@/lib/utils'
-import { BarChart3, Type } from 'lucide-react'
+import { BarChart3, Type, Search } from 'lucide-react'
 
-type RightSidebarTab = 'stats' | 'format'
+type RightSidebarTab = 'stats' | 'format' | 'analysis'
 
 export function Layout() {
   const { sidebarOpen, focusMode, statsSidebarOpen } = useUIStore()
@@ -102,10 +103,24 @@ export function Layout() {
                   <Type size={14} />
                   <span>Format</span>
                 </button>
+                <button
+                  onClick={() => setRightSidebarTab('analysis')}
+                  className={cn(
+                    'flex-1 h-full flex items-center justify-center gap-1.5 text-sm transition-colors',
+                    rightSidebarTab === 'analysis'
+                      ? 'text-foreground border-b-2 border-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Search size={14} />
+                  <span>Analyse</span>
+                </button>
               </div>
               {/* Content */}
               <div className="flex-1 overflow-auto">
-                {rightSidebarTab === 'stats' ? <StatsPanel /> : <FormattingPanel />}
+                {rightSidebarTab === 'stats' && <StatsPanel />}
+                {rightSidebarTab === 'format' && <FormattingPanel />}
+                {rightSidebarTab === 'analysis' && <AnalysisPanel />}
               </div>
             </>
           )}

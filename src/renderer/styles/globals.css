@@ -523,3 +523,77 @@
 .dark [data-radix-menu-content] {
   background-color: hsl(0 0% 12%) !important;
 }
+
+/* ===============================================
+   Text Analysis Highlighting Styles
+   =============================================== */
+
+/* Long sentence - amber/warning */
+.analysis-long-sentence {
+  background-color: rgba(245, 158, 11, 0.2);
+  border-radius: 2px;
+}
+
+/* Very long sentence - red/critical */
+.analysis-very-long-sentence {
+  background-color: rgba(239, 68, 68, 0.2);
+  border-radius: 2px;
+}
+
+/* Word repetition - SELECTED (strong orange) */
+.analysis-repetition-selected {
+  background-color: rgba(249, 115, 22, 0.4);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.3);
+}
+
+/* Word repetition - DIMMED (very subtle) */
+.analysis-repetition-dimmed {
+  background-color: rgba(249, 115, 22, 0.1);
+  border-radius: 2px;
+}
+
+/* Legacy - kept for compatibility */
+.analysis-repetition-word {
+  background-color: rgba(249, 115, 22, 0.25);
+  border-radius: 2px;
+}
+
+/* Phrase repetition */
+.analysis-repetition-phrase {
+  background-color: rgba(249, 115, 22, 0.25);
+  border-radius: 2px;
+}
+
+/* Sentence starter repetition */
+.analysis-repetition-starter {
+  background-color: rgba(59, 130, 246, 0.15);
+  border-radius: 2px;
+}
+
+/* Adverb - purple wavy underline */
+.analysis-adverb {
+  text-decoration: underline wavy;
+  text-decoration-color: rgba(147, 51, 234, 0.6);
+  text-underline-offset: 3px;
+}
+
+/* Adjective - subtle blue */
+.analysis-adjective {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-radius: 2px;
+}
+
+/* Weak verb - dashed underline */
+.analysis-weak-verb {
+  text-decoration: underline dashed;
+  text-decoration-color: rgba(234, 88, 12, 0.6);
+  text-underline-offset: 3px;
+}
+
+/* Selected issue highlight */
+.analysis-selected {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 1px;
+  border-radius: 3px;
+}

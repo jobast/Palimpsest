@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -10,9 +10,10 @@ import Highlight from '@tiptap/extension-highlight'
 import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useStatsStore } from '@/stores/statsStore'
+import { useAnalysisStore } from '@/stores/analysisStore'
 import { usePagination } from '@/hooks/usePagination'
 import { useWritingTimer } from '@/hooks/useWritingTimer'
-import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, PageBreakDecorations } from './extensions'
+import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, PageBreakDecorations, TextAnalysisDecorations } from './extensions'
 import type { WordStatsData } from './extensions'
 import { PagedEditor } from './PagedEditor'
 import { SheetEditor } from './SheetEditor'
@@ -99,7 +100,8 @@ export function EditorArea() {
       SceneBreak,
       ChapterTitle,
       FirstParagraph,
-      PageBreakDecorations
+      PageBreakDecorations,
+      TextAnalysisDecorations
     ],
     content: '',
     editorProps: {
@@ -158,6 +160,19 @@ export function EditorArea() {
     const wordCount = editor.storage.characterCount?.words() ?? 0
     startEditorSession(wordCount)
   }, [editor, activeDocumentId, project, getDocumentContent, startEditorSession])
+
+  // Subscribe to analysis store changes to refresh decorations
+  const analysisUpdateCounter = useRef(0)
+  const { result: analysisResult, activeMode, selectedIssueId } = useAnalysisStore()
+
+  useEffect(() => {
+    if (!editor) return
+
+    // Force decoration refresh by dispatching an empty transaction
+    analysisUpdateCounter.current++
+    const tr = editor.state.tr.setMeta('analysisUpdate', analysisUpdateCounter.current)
+    editor.view.dispatch(tr)
+  }, [editor, analysisResult, activeMode, selectedIssueId])
 
   if (!project) {
     return null
