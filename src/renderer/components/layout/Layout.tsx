@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useUIStore } from '@/stores/uiStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { Sidebar } from './Sidebar'
@@ -5,12 +6,16 @@ import { Toolbar } from './Toolbar'
 import { EditorArea } from '../editor/EditorArea'
 import { WelcomeScreen } from './WelcomeScreen'
 import { StatsPanel } from '../stats/StatsPanel'
+import { FormattingPanel } from '../editor/FormattingPanel'
 import { cn } from '@/lib/utils'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, Type } from 'lucide-react'
+
+type RightSidebarTab = 'stats' | 'format'
 
 export function Layout() {
   const { sidebarOpen, focusMode, statsSidebarOpen } = useUIStore()
   const { project, isLoading } = useProjectStore()
+  const [rightSidebarTab, setRightSidebarTab] = useState<RightSidebarTab>('stats')
 
   if (isLoading) {
     return (
@@ -61,7 +66,7 @@ export function Layout() {
           <EditorArea />
         </div>
 
-        {/* Right Sidebar - Stats */}
+        {/* Right Sidebar - Stats & Formatting */}
         <div
           className={cn(
             'transition-all duration-200 ease-in-out border-l border-border bg-card flex flex-col',
@@ -71,14 +76,36 @@ export function Layout() {
         >
           {statsSidebarOpen && !focusMode && (
             <>
-              {/* Header */}
-              <div className="h-10 border-b border-border flex items-center px-4">
-                <BarChart3 size={16} className="text-muted-foreground mr-2" />
-                <span className="text-sm font-medium">Statistiques</span>
+              {/* Tab Header */}
+              <div className="h-10 border-b border-border flex items-center">
+                <button
+                  onClick={() => setRightSidebarTab('stats')}
+                  className={cn(
+                    'flex-1 h-full flex items-center justify-center gap-1.5 text-sm transition-colors',
+                    rightSidebarTab === 'stats'
+                      ? 'text-foreground border-b-2 border-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <BarChart3 size={14} />
+                  <span>Stats</span>
+                </button>
+                <button
+                  onClick={() => setRightSidebarTab('format')}
+                  className={cn(
+                    'flex-1 h-full flex items-center justify-center gap-1.5 text-sm transition-colors',
+                    rightSidebarTab === 'format'
+                      ? 'text-foreground border-b-2 border-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Type size={14} />
+                  <span>Format</span>
+                </button>
               </div>
               {/* Content */}
               <div className="flex-1 overflow-auto">
-                <StatsPanel />
+                {rightSidebarTab === 'stats' ? <StatsPanel /> : <FormattingPanel />}
               </div>
             </>
           )}

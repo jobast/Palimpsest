@@ -35,6 +35,68 @@ export const defaultTemplates: PageTemplate[] = [
   // MANUSCRIPT FORMATS (for submission to agents/publishers)
   // ===================
   {
+    id: 'manuscript-typewriter',
+    name: 'Manuscrit Dactylographié',
+    description: 'Style machine à écrire, le manuscrit maudit (A4)',
+    region: 'manuscript',
+    page: {
+      width: '210mm',
+      height: '297mm',
+      marginTop: '30mm',
+      marginBottom: '30mm',
+      marginLeft: '30mm',
+      marginRight: '30mm'
+    },
+    typography: {
+      fontFamily: 'Courier New, Courier, monospace',
+      fontSize: '12pt',
+      lineHeight: 2.0, // Double-spaced comme à l'ancienne
+      paragraphSpacing: '0',
+      firstLineIndent: '1.25cm'
+    },
+    header: {
+      show: true,
+      content: '{author} / {title} / {page}',
+      fontSize: '10pt'
+    },
+    footer: {
+      show: false,
+      showPageNumber: false,
+      fontSize: '10pt'
+    }
+  },
+  {
+    id: 'manuscript-typewriter-us',
+    name: 'Manuscrit Dactylographié US',
+    description: 'Style machine à écrire, format US Letter',
+    region: 'manuscript',
+    page: {
+      width: '8.5in',
+      height: '11in',
+      marginTop: '1.25in',
+      marginBottom: '1.25in',
+      marginLeft: '1.25in',
+      marginRight: '1.25in'
+    },
+    typography: {
+      fontFamily: 'Courier New, Courier, monospace',
+      fontSize: '12pt',
+      lineHeight: 2.0, // Double-spaced
+      paragraphSpacing: '0',
+      firstLineIndent: '0.5in'
+    },
+    header: {
+      show: true,
+      content: '{author} / {title} / {page}',
+      fontSize: '10pt'
+    },
+    footer: {
+      show: false,
+      showPageNumber: false,
+      fontSize: '10pt'
+    }
+  },
+  {
     id: 'manuscript-us',
     name: 'Manuscrit US Letter',
     description: 'Format soumission standard US (8.5" × 11")',

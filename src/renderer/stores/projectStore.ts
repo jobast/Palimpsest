@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { Project, ManuscriptItem, Sheet } from '@shared/types/project'
+import type { Project, ManuscriptItem, Sheet, UserTypographyOverrides } from '@shared/types/project'
+import { useEditorStore } from './editorStore'
 
 // Check if running in Electron
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
@@ -31,6 +32,9 @@ interface ProjectState {
   updateSheet: (id: string, updates: Partial<Sheet>) => void
   deleteSheet: (id: string) => void
   duplicateSheet: (id: string) => void
+
+  // Typography overrides
+  updateTypographyOverrides: (overrides: UserTypographyOverrides) => void
 
   // File operations
   createNewProject: (name: string, author: string, template: string, path?: string) => Promise<void>
@@ -328,6 +332,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     setActiveSheet(newSheet.id)
   },
 
+  updateTypographyOverrides: (overrides) => {
+    const { project } = get()
+    if (!project) return
+
+    set({
+      project: {
+        ...project,
+        meta: {
+          ...project.meta,
+          typographyOverrides: Object.keys(overrides).length > 0 ? overrides : undefined
+        }
+      },
+      isDirty: true
+    })
+  },
+
   createNewProject: async (name, author, template, providedPath?) => {
     set({ isLoading: true })
     try {
@@ -468,6 +488,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         activeDocumentId: manuscript.items[0]?.id || null
       })
       localStorage.setItem('lastProjectPath', projectPath)
+
+      // Load typography overrides into editor store
+      useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
     } catch (error) {
       console.error('Failed to open project:', error)
       set({ isLoading: false })
@@ -478,6 +501,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const { project, projectPath } = get()
     if (!project || !projectPath) return
 
+    // Get current typography overrides from editor store
+    const typographyOverrides = useEditorStore.getState().userTypographyOverrides
+    const hasOverrides = Object.keys(typographyOverrides).length > 0
+
     set({ isLoading: true })
     try {
       // Browser mode: save to localStorage
@@ -485,17 +512,26 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const projectId = project.meta.id
         const updatedProject = {
           ...project,
-          meta: { ...project.meta, updatedAt: new Date().toISOString() }
+          meta: {
+            ...project.meta,
+            updatedAt: new Date().toISOString(),
+            typographyOverrides: hasOverrides ? typographyOverrides : undefined
+          }
         }
         localStorage.setItem(`palimpseste_project_${projectId}`, JSON.stringify(updatedProject))
         set({ project: updatedProject, isLoading: false, isDirty: false })
         return
       }
 
-      // Electron mode
+      // Electron mode - include typography overrides
+      const updatedMeta = {
+        ...project.meta,
+        updatedAt: new Date().toISOString(),
+        typographyOverrides: hasOverrides ? typographyOverrides : undefined
+      }
       await window.electronAPI.writeFile(
         `${projectPath}/project.json`,
-        JSON.stringify({ ...project.meta, updatedAt: new Date().toISOString() }, null, 2)
+        JSON.stringify(updatedMeta, null, 2)
       )
       await window.electronAPI.writeFile(
         `${projectPath}/manuscript/structure.json`,
@@ -535,6 +571,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           isDirty: false,
           activeDocumentId: project.manuscript.items[0]?.id || null
         })
+
+        // Load typography overrides into editor store
+        useEditorStore.getState().loadUserOverrides(project.meta.typographyOverrides || {})
       } catch (error) {
         console.error('Failed to load project from localStorage:', error)
       }
@@ -594,6 +633,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isDirty: false,
         activeDocumentId: manuscript.items[0]?.id || null
       })
+
+      // Load typography overrides into editor store
+      useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
     } catch (error) {
       console.error('Failed to load last project:', error)
       set({ isLoading: false })

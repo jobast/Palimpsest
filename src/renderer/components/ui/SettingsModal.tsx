@@ -99,31 +99,26 @@ export function SettingsModal() {
                 <div className="flex gap-2">
                   <IntervalButton
                     label="15s"
-                    value={15}
                     active={autoSaveInterval === 15}
                     onClick={() => setAutoSaveInterval(15)}
                   />
                   <IntervalButton
                     label="30s"
-                    value={30}
                     active={autoSaveInterval === 30}
                     onClick={() => setAutoSaveInterval(30)}
                   />
                   <IntervalButton
                     label="1min"
-                    value={60}
                     active={autoSaveInterval === 60}
                     onClick={() => setAutoSaveInterval(60)}
                   />
                   <IntervalButton
                     label="2min"
-                    value={120}
                     active={autoSaveInterval === 120}
                     onClick={() => setAutoSaveInterval(120)}
                   />
                   <IntervalButton
                     label="5min"
-                    value={300}
                     active={autoSaveInterval === 300}
                     onClick={() => setAutoSaveInterval(300)}
                   />
@@ -173,12 +168,10 @@ function ThemeButton({
 
 function IntervalButton({
   label,
-  value,
   active,
   onClick
 }: {
   label: string
-  value: number
   active: boolean
   onClick: () => void
 }) {

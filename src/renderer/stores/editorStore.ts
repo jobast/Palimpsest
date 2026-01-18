@@ -2,12 +2,26 @@ import { create } from 'zustand'
 import type { Editor } from '@tiptap/react'
 import type { PageTemplate } from '@shared/types/templates'
 import { defaultTemplates } from '@shared/types/templates'
+import type { UserTypographyOverrides } from '@shared/types/project'
 
 export type ViewMode = 'text' | 'page'
+
+// Re-export for convenience
+export type { UserTypographyOverrides }
+
+// Effective typography combining template + user overrides
+export interface EffectiveTypography {
+  fontFamily: string
+  fontSize: string
+  lineHeight: number
+  paragraphSpacing: string
+  firstLineIndent: string
+}
 
 interface EditorState {
   editor: Editor | null
   currentTemplate: PageTemplate
+  userTypographyOverrides: UserTypographyOverrides
   documentContents: Map<string, string>
   viewMode: ViewMode
 
@@ -23,6 +37,12 @@ interface EditorState {
   setTemplate: (templateId: string) => void
   setViewMode: (mode: ViewMode) => void
 
+  // Typography overrides
+  setUserTypographyOverride: <K extends keyof UserTypographyOverrides>(key: K, value: UserTypographyOverrides[K] | null) => void
+  resetUserOverrides: () => void
+  loadUserOverrides: (overrides: UserTypographyOverrides) => void
+  getEffectiveTypography: () => EffectiveTypography
+
   // Document content
   getDocumentContent: (documentId: string) => string | undefined
   setDocumentContent: (documentId: string, content: string) => void
@@ -36,6 +56,7 @@ interface EditorState {
 export const useEditorStore = create<EditorState>((set, get) => ({
   editor: null,
   currentTemplate: defaultTemplates[0],
+  userTypographyOverrides: {},
   documentContents: new Map(),
   viewMode: 'page' as ViewMode,
 
@@ -52,7 +73,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setTemplate: (templateId) => {
     const template = defaultTemplates.find(t => t.id === templateId)
     if (template) {
-      set({ currentTemplate: template })
+      // Reset user overrides when changing template
+      set({ currentTemplate: template, userTypographyOverrides: {} })
+    }
+  },
+
+  setUserTypographyOverride: (key, value) => {
+    const { userTypographyOverrides } = get()
+    const newOverrides = { ...userTypographyOverrides }
+    if (value === null || value === undefined) {
+      delete newOverrides[key]
+    } else {
+      newOverrides[key] = value
+    }
+    set({ userTypographyOverrides: newOverrides })
+  },
+
+  resetUserOverrides: () => {
+    set({ userTypographyOverrides: {} })
+  },
+
+  loadUserOverrides: (overrides) => {
+    set({ userTypographyOverrides: overrides || {} })
+  },
+
+  getEffectiveTypography: () => {
+    const { currentTemplate, userTypographyOverrides } = get()
+    return {
+      fontFamily: currentTemplate.typography.fontFamily,
+      fontSize: userTypographyOverrides.fontSize ?? currentTemplate.typography.fontSize,
+      lineHeight: userTypographyOverrides.lineHeight ?? currentTemplate.typography.lineHeight,
+      paragraphSpacing: currentTemplate.typography.paragraphSpacing,
+      firstLineIndent: userTypographyOverrides.firstLineIndent ?? currentTemplate.typography.firstLineIndent,
     }
   },
 

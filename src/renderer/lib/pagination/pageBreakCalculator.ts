@@ -12,6 +12,7 @@
 import type { Editor } from '@tiptap/react'
 import type { PageTemplate } from '@shared/types/templates'
 import type { PageInfo } from '@/stores/paginationStore'
+import type { EffectiveTypography } from '@/stores/editorStore'
 import { convertToPixels, parseFontSize, parseLineHeight } from './unitConversions'
 
 export interface PageBreakResult {
@@ -23,6 +24,7 @@ export interface CalculationContext {
   template: PageTemplate
   editor: Editor
   measurementContainer: HTMLElement
+  effectiveTypography?: EffectiveTypography // User typography overrides
 }
 
 /**
@@ -94,8 +96,11 @@ export function getPageDimensions(template: PageTemplate) {
  * 5. Return array of page info with positions
  */
 export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
-  const { template, editor, measurementContainer } = ctx
+  const { template, editor, measurementContainer, effectiveTypography } = ctx
   const dims = getPageDimensions(template)
+
+  // Use effective typography if provided, otherwise fall back to template
+  const typography = effectiveTypography || template.typography
 
   // Configure measurement container to match page content area
   measurementContainer.style.cssText = `
@@ -104,9 +109,9 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
     top: 0;
     visibility: hidden;
     width: ${dims.contentWidth}px;
-    font-family: ${template.typography.fontFamily};
-    font-size: ${template.typography.fontSize};
-    line-height: ${template.typography.lineHeight};
+    font-family: ${typography.fontFamily};
+    font-size: ${typography.fontSize};
+    line-height: ${typography.lineHeight};
     text-align: justify;
     hyphens: auto;
   `
@@ -126,8 +131,8 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
   const doc = editor.state.doc
 
   // Orphan/widow prevention threshold (minimum lines on a page)
-  const fontSize = parseFontSize(template.typography.fontSize)
-  const lineHeight = parseLineHeight(template.typography.lineHeight, fontSize)
+  const fontSize = parseFontSize(typography.fontSize)
+  const lineHeight = parseLineHeight(typography.lineHeight, fontSize)
   const minLinesThreshold = lineHeight * 2.5 // At least ~2-3 lines
 
   // Iterate through top-level blocks in the document

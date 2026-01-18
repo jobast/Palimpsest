@@ -5,6 +5,13 @@ export type DocumentStatus = 'draft' | 'revision' | 'final'
 // - editing: Total changes matter (words added + words deleted)
 export type ManuscriptMode = 'drafting' | 'editing'
 
+// User overrides for template typography settings
+export interface UserTypographyOverrides {
+  fontSize?: string      // e.g., "12pt"
+  lineHeight?: number    // e.g., 1.5
+  firstLineIndent?: string // e.g., "1cm"
+}
+
 export interface ProjectMeta {
   id: string
   name: string
@@ -14,6 +21,7 @@ export interface ProjectMeta {
   template: string
   wordCountGoal?: number
   deadlineDate?: string
+  typographyOverrides?: UserTypographyOverrides
 }
 
 export interface ManuscriptItem {

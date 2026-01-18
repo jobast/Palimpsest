@@ -29,7 +29,8 @@ import {
  * - Page frames are pointer-events: none so clicks reach the editor
  */
 export function PagedEditor() {
-  const { editor, currentTemplate } = useEditorStore()
+  const { editor, currentTemplate, getEffectiveTypography } = useEditorStore()
+  const effectiveTypography = getEffectiveTypography()
   const { totalPages, currentPage, setCurrentPage } = usePaginationStore()
   const { zoomLevel, setZoomLevel, zoomIn, zoomOut, resetZoom } = useUIStore()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -264,11 +265,11 @@ export function PagedEditor() {
                   top: dims.marginTop + headerHeight,
                   left: dims.marginLeft,
                   width: dims.width - dims.marginLeft - dims.marginRight,
-                  fontFamily: currentTemplate.typography.fontFamily,
-                  fontSize: currentTemplate.typography.fontSize,
-                  lineHeight: currentTemplate.typography.lineHeight,
+                  fontFamily: effectiveTypography.fontFamily,
+                  fontSize: effectiveTypography.fontSize,
+                  lineHeight: effectiveTypography.lineHeight,
                   color: 'hsl(var(--paper-foreground))',
-                  '--first-line-indent': currentTemplate.typography.firstLineIndent,
+                  '--first-line-indent': effectiveTypography.firstLineIndent,
                 } as React.CSSProperties}
               >
                 <EditorContent editor={editor} />

@@ -10,7 +10,7 @@ import { calculatePageBreaks, debounce } from '@/lib/pagination'
  * when the editor content or template changes.
  */
 export function usePagination() {
-  const { editor, currentTemplate } = useEditorStore()
+  const { editor, currentTemplate, getEffectiveTypography, userTypographyOverrides } = useEditorStore()
   const { setPages, setIsCalculating, reset } = usePaginationStore()
   const measurementRef = useRef<HTMLDivElement | null>(null)
 
@@ -59,7 +59,8 @@ export function usePagination() {
           const result = calculatePageBreaks({
             template: currentTemplate,
             editor,
-            measurementContainer: measurementRef.current!
+            measurementContainer: measurementRef.current!,
+            effectiveTypography: getEffectiveTypography()
           })
 
           setPages(result.pages)
@@ -78,7 +79,7 @@ export function usePagination() {
         }
       })
     }, 200), // 200ms debounce
-    [editor, currentTemplate, setPages, setIsCalculating, reset]
+    [editor, currentTemplate, getEffectiveTypography, setPages, setIsCalculating, reset]
   )
 
   // Recalculate on content change
@@ -99,10 +100,10 @@ export function usePagination() {
     }
   }, [editor, recalculate])
 
-  // Recalculate on template change
+  // Recalculate on template or typography override change
   useEffect(() => {
     recalculate()
-  }, [currentTemplate, recalculate])
+  }, [currentTemplate, userTypographyOverrides, recalculate])
 
   return {
     measurementRef,
