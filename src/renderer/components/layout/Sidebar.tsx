@@ -2,6 +2,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
+import { getPageDimensions } from '@/lib/pagination'
 import {
   FileText,
   Users,
@@ -238,18 +239,35 @@ function SheetsPanel() {
 
 /**
  * Page Thumbnails Panel
- * Shows miniature previews of pages for quick navigation
+ * Shows miniature previews of pages for quick navigation with real text content
  */
 function PageThumbnailsPanel() {
   const { pages, currentPage, totalPages } = usePaginationStore()
-  const { currentTemplate } = useEditorStore()
+  const { editor, currentTemplate } = useEditorStore()
 
-  // Calculate thumbnail dimensions (maintain aspect ratio)
-  const sidebarWidth = 200 // Approximate sidebar content width
-  const aspectRatio = parseFloat(currentTemplate.page.height.replace(/[^0-9.]/g, '')) /
-                      parseFloat(currentTemplate.page.width.replace(/[^0-9.]/g, '')) || 1.5
-  const thumbnailWidth = sidebarWidth - 24 // Account for padding
+  // Get actual page dimensions from template (properly converted to pixels)
+  const dims = getPageDimensions(currentTemplate)
+
+  // Calculate thumbnail dimensions maintaining correct aspect ratio
+  const maxThumbnailWidth = 176 // Sidebar width minus padding
+  const aspectRatio = dims.height / dims.width
+  const thumbnailWidth = maxThumbnailWidth
   const thumbnailHeight = thumbnailWidth * aspectRatio
+
+  // Extract text content for a page range
+  const getPageText = (startPos: number, endPos: number): string => {
+    if (!editor) return ''
+    try {
+      const doc = editor.state.doc
+      // Ensure positions are within bounds
+      const safeStart = Math.max(0, startPos)
+      const safeEnd = Math.min(doc.content.size, endPos)
+      if (safeStart >= safeEnd) return ''
+      return doc.textBetween(safeStart, safeEnd, '\n', ' ')
+    } catch {
+      return ''
+    }
+  }
 
   const scrollToPage = (pageNum: number) => {
     window.dispatchEvent(
@@ -273,47 +291,58 @@ function PageThumbnailsPanel() {
         </span>
       </div>
 
-      <div className="space-y-3">
-        {pages.map((pageInfo) => (
-          <button
-            key={pageInfo.pageNumber}
-            onClick={() => scrollToPage(pageInfo.pageNumber)}
-            className={cn(
-              'w-full rounded-lg border-2 transition-all overflow-hidden',
-              currentPage === pageInfo.pageNumber
-                ? 'border-primary shadow-md'
-                : 'border-border hover:border-muted-foreground/50'
-            )}
-          >
-            {/* Thumbnail preview */}
-            <div
-              className="bg-paper relative"
+      <div className="flex flex-col items-center gap-3">
+        {pages.map((pageInfo) => {
+          const pageText = getPageText(pageInfo.startPos, pageInfo.endPos)
+
+          return (
+            <button
+              key={pageInfo.pageNumber}
+              onClick={() => scrollToPage(pageInfo.pageNumber)}
+              className={cn(
+                'rounded-lg border-2 transition-all overflow-hidden bg-paper',
+                currentPage === pageInfo.pageNumber
+                  ? 'border-primary shadow-md'
+                  : 'border-border hover:border-muted-foreground/50'
+              )}
               style={{
-                width: '100%',
+                width: `${thumbnailWidth}px`,
                 height: `${thumbnailHeight}px`,
-                padding: '8px'
               }}
             >
-              {/* Simulated content lines */}
-              <div className="space-y-1">
-                {Array.from({ length: Math.min(12, Math.ceil(pageInfo.contentHeight / 20)) }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-1 bg-muted-foreground/20 rounded"
-                    style={{
-                      width: i === 0 ? '60%' : i === 11 ? '40%' : '100%'
-                    }}
-                  />
-                ))}
-              </div>
+              {/* Thumbnail content */}
+              <div
+                className="relative w-full h-full overflow-hidden"
+              >
+                {/* Scaled text content - padding proportional to page margins */}
+                <div
+                  className="absolute text-paper-foreground overflow-hidden"
+                  style={{
+                    top: `${(dims.marginTop / dims.height) * thumbnailHeight}px`,
+                    left: `${(dims.marginLeft / dims.width) * thumbnailWidth}px`,
+                    right: `${(dims.marginRight / dims.width) * thumbnailWidth}px`,
+                    bottom: `${(dims.marginBottom / dims.height) * thumbnailHeight}px`,
+                    fontSize: '3.5px',
+                    lineHeight: 1.3,
+                    fontFamily: currentTemplate.typography.fontFamily,
+                    textAlign: 'justify',
+                    wordBreak: 'break-word',
+                    hyphens: 'auto',
+                  }}
+                >
+                  {pageText || (
+                    <span className="text-muted-foreground/30 italic">Page vide</span>
+                  )}
+                </div>
 
-              {/* Page number badge */}
-              <div className="absolute bottom-1 right-1 bg-background/80 px-1.5 py-0.5 rounded text-[10px] font-medium">
-                {pageInfo.pageNumber}
+                {/* Page number badge */}
+                <div className="absolute bottom-1 right-1 bg-background/80 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                  {pageInfo.pageNumber}
+                </div>
               </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
