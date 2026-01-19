@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { useEditorStore } from '@/stores/editorStore'
-import { getPageDimensions } from '@/lib/pagination'
+import { getPageDimensions, PAGE_GAP, HEADER_HEIGHT, FOOTER_HEIGHT } from '@/lib/pagination'
 
 export interface PageBreakDecorationsOptions {
   enabled: boolean
@@ -38,8 +38,13 @@ export const PageBreakDecorations = Extension.create<PageBreakDecorationsOptions
         props: {
           decorations(state) {
             // Read current state from stores
-            const { pageBreakPositions, pages } = usePaginationStore.getState()
+            const { pageBreakPositions, pages, isCalculating } = usePaginationStore.getState()
             const { currentTemplate } = useEditorStore.getState()
+
+            // Don't render decorations while recalculating (prevents glitches during template changes)
+            if (isCalculating) {
+              return DecorationSet.empty
+            }
 
             if (!pageBreakPositions || pageBreakPositions.length === 0) {
               return DecorationSet.empty
@@ -47,9 +52,8 @@ export const PageBreakDecorations = Extension.create<PageBreakDecorationsOptions
 
             // Get dimensions from current template
             const dims = getPageDimensions(currentTemplate)
-            const headerHeight = currentTemplate.header?.show ? 40 : 0
-            const footerHeight = currentTemplate.footer?.show ? 40 : 0
-            const pageGap = 40
+            const headerHeight = currentTemplate.header?.show ? HEADER_HEIGHT : 0
+            const footerHeight = currentTemplate.footer?.show ? FOOTER_HEIGHT : 0
 
             const decorations: Decoration[] = []
             const doc = state.doc
@@ -60,7 +64,7 @@ export const PageBreakDecorations = Extension.create<PageBreakDecorationsOptions
             // - Top margin + header of next page
             const interPageSpace =
               dims.marginBottom + footerHeight +
-              pageGap +
+              PAGE_GAP +
               dims.marginTop + headerHeight
 
             pageBreakPositions.forEach((pos, index) => {

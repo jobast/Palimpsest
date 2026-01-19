@@ -2,11 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { PageRenderer } from './PageRenderer'
-import { getPageDimensions } from '@/lib/pagination'
+import { getPageDimensions, PAGE_GAP } from '@/lib/pagination'
 import { ChevronUp, ChevronDown } from 'lucide-react'
-
-// Gap between pages in pixels
-const PAGE_GAP = 48
 
 /**
  * Page View Component

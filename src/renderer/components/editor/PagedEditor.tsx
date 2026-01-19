@@ -3,7 +3,7 @@ import { EditorContent } from '@tiptap/react'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { useUIStore } from '@/stores/uiStore'
-import { getPageDimensions } from '@/lib/pagination'
+import { getPageDimensions, PAGE_GAP, HEADER_HEIGHT, FOOTER_HEIGHT } from '@/lib/pagination'
 import { ChevronUp, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react'
 import { ViewModeToggle } from './ViewModeToggle'
 
@@ -34,29 +34,28 @@ export function PagedEditor() {
     return getPageDimensions(currentTemplate)
   }, [currentTemplate])
 
-  const headerHeight = currentTemplate.header?.show ? 40 : 0
-  const footerHeight = currentTemplate.footer?.show ? 40 : 0
-  const pageGap = 40
+  const headerHeight = currentTemplate.header?.show ? HEADER_HEIGHT : 0
+  const footerHeight = currentTemplate.footer?.show ? FOOTER_HEIGHT : 0
 
   // Calculate total height needed for all pages
   const totalHeight = useMemo(() => {
-    return totalPages * dims.height + (totalPages - 1) * pageGap
-  }, [totalPages, dims.height, pageGap])
+    return totalPages * dims.height + (totalPages - 1) * PAGE_GAP
+  }, [totalPages, dims.height, PAGE_GAP])
 
   // Calculate position of each page
   const getPageTop = useCallback((pageNum: number) => {
-    return (pageNum - 1) * (dims.height + pageGap)
-  }, [dims.height, pageGap])
+    return (pageNum - 1) * (dims.height + PAGE_GAP)
+  }, [dims.height, PAGE_GAP])
 
   // Handle scroll to update current page indicator
   const handleScroll = useCallback(() => {
     if (!containerRef.current || !editor) return
 
     const scrollTop = containerRef.current.scrollTop
-    const pageHeight = dims.height + pageGap
+    const pageHeight = dims.height + PAGE_GAP
     const page = Math.floor(scrollTop / pageHeight) + 1
     setCurrentPage(Math.min(Math.max(1, page), Math.max(1, totalPages)))
-  }, [editor, dims.height, pageGap, totalPages, setCurrentPage])
+  }, [editor, dims.height, PAGE_GAP, totalPages, setCurrentPage])
 
   // Scroll to a specific page
   const scrollToPage = useCallback((pageNum: number) => {

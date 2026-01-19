@@ -367,6 +367,39 @@
   text-indent: 0;
 }
 
+/* Blockquote - match .ProseMirror blockquote */
+.manuscript-content blockquote {
+  @apply border-l-4 border-muted pl-4 italic my-4;
+  text-indent: 0;
+  margin-left: 2em;
+  margin-right: 2em;
+}
+
+/* Lists - match .ProseMirror ul/ol */
+.manuscript-content ul,
+.manuscript-content ol {
+  @apply pl-6 my-2;
+  text-indent: 0;
+}
+
+.manuscript-content li {
+  @apply my-1;
+  text-indent: 0;
+}
+
+/* Horizontal rule - match .ProseMirror hr */
+.manuscript-content hr {
+  border: none;
+  text-align: center;
+  margin: 1.5em 0;
+}
+
+.manuscript-content hr::before {
+  content: "* * *";
+  color: hsl(var(--muted-foreground));
+  letter-spacing: 0.5em;
+}
+
 /* Scrollbar styles */
 ::-webkit-scrollbar {
   width: 8px;

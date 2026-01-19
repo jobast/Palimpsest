@@ -78,7 +78,7 @@ export function usePagination() {
           setIsCalculating(false)
         }
       })
-    }, 200), // 200ms debounce
+    }, 100), // 100ms debounce - faster response while still preventing excessive recalculations
     [editor, currentTemplate, getEffectiveTypography, setPages, setIsCalculating, reset]
   )
 
@@ -102,8 +102,10 @@ export function usePagination() {
 
   // Recalculate on template or typography override change
   useEffect(() => {
+    // Set calculating immediately to prevent decoration glitches during template transition
+    setIsCalculating(true)
     recalculate()
-  }, [currentTemplate, userTypographyOverrides, recalculate])
+  }, [currentTemplate, userTypographyOverrides, recalculate, setIsCalculating])
 
   return {
     measurementRef,
