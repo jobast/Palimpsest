@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, nativeImage, session, Menu } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -34,10 +34,25 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      spellcheck: true
     },
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 15, y: 15 }
+  })
+
+  // Configure spell checker for French
+  session.defaultSession.setSpellCheckerLanguages(['fr'])
+
+  // Handle context menu for spell check suggestions
+  // Send spell check info to renderer for integration with custom context menu
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    if (params.misspelledWord) {
+      mainWindow?.webContents.send('spellcheck:context', {
+        misspelledWord: params.misspelledWord,
+        suggestions: params.dictionarySuggestions
+      })
+    }
   })
 
   if (isDev) {
@@ -136,4 +151,17 @@ ipcMain.handle('fs:exists', async (_, filePath: string) => {
   } catch {
     return false
   }
+})
+
+// Spell check IPC handlers
+ipcMain.handle('spellcheck:addToDictionary', async (_, word: string) => {
+  session.defaultSession.addWordToSpellCheckerDictionary(word)
+  return true
+})
+
+ipcMain.handle('spellcheck:replaceMisspelling', async (_, word: string) => {
+  if (mainWindow) {
+    mainWindow.webContents.replaceMisspelling(word)
+  }
+  return true
 })

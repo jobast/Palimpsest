@@ -4,7 +4,8 @@ import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { useUIStore } from '@/stores/uiStore'
 import { getPageDimensions } from '@/lib/pagination'
-import { ChevronUp, ChevronDown, Scissors, Copy, ClipboardPaste, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, MessageSquareQuote, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronUp, ChevronDown, Scissors, Copy, ClipboardPaste, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, MessageSquareQuote, ZoomIn, ZoomOut, Plus } from 'lucide-react'
+import type { SpellCheckContext } from '@shared/types/electron'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -37,9 +38,25 @@ export function PagedEditor() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [showPageNav, setShowPageNav] = useState(false)
   const [hasSelection, setHasSelection] = useState(false)
+  const [spellCheck, setSpellCheck] = useState<SpellCheckContext | null>(null)
 
   // Zoom scale factor
   const scale = zoomLevel / 100
+
+  // Listen for spell check context from main process
+  useEffect(() => {
+    if (window.electronAPI?.onSpellCheckContext) {
+      window.electronAPI.onSpellCheckContext((data) => {
+        setSpellCheck(data)
+      })
+    }
+
+    return () => {
+      if (window.electronAPI?.removeSpellCheckListener) {
+        window.electronAPI.removeSpellCheckListener()
+      }
+    }
+  }, [])
 
   // Track if editor has text selection
   useEffect(() => {
@@ -104,6 +121,26 @@ export function PagedEditor() {
   const handleInsertDialogueDash = useCallback(() => {
     editor?.chain().focus().insertContent('— ').run()
   }, [editor])
+
+  // Spell check handlers
+  const handleReplaceWord = useCallback((suggestion: string) => {
+    window.electronAPI?.replaceMisspelling(suggestion)
+    setSpellCheck(null)
+  }, [])
+
+  const handleAddToDictionary = useCallback(() => {
+    if (spellCheck?.misspelledWord) {
+      window.electronAPI?.addToDictionary(spellCheck.misspelledWord)
+    }
+    setSpellCheck(null)
+  }, [spellCheck])
+
+  // Clear spell check when menu closes
+  const handleMenuOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setSpellCheck(null)
+    }
+  }, [])
 
   // Get page dimensions from template
   const dims = useMemo(() => {
@@ -258,7 +295,7 @@ export function PagedEditor() {
           ))}
 
           {/* Editor content - positioned to flow through page content areas */}
-          <ContextMenu>
+          <ContextMenu onOpenChange={handleMenuOpenChange}>
             <ContextMenuTrigger asChild>
               <div
                 className="absolute manuscript-content"
@@ -277,6 +314,29 @@ export function PagedEditor() {
               </div>
             </ContextMenuTrigger>
             <ContextMenuContent className="w-56">
+              {/* Spell check suggestions */}
+              {spellCheck && spellCheck.suggestions.length > 0 && (
+                <>
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium">
+                    Orthographe : « {spellCheck.misspelledWord} »
+                  </div>
+                  {spellCheck.suggestions.slice(0, 5).map((suggestion) => (
+                    <ContextMenuItem
+                      key={suggestion}
+                      onSelect={() => handleReplaceWord(suggestion)}
+                      className="font-medium"
+                    >
+                      {suggestion}
+                    </ContextMenuItem>
+                  ))}
+                  <ContextMenuItem onSelect={handleAddToDictionary}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Ajouter au dictionnaire
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                </>
+              )}
+
               {/* Clipboard actions */}
               {hasSelection && (
                 <>

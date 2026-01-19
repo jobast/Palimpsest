@@ -20,6 +20,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App info
   platform: process.platform,
 
+  // Spell check operations
+  addToDictionary: (word: string) =>
+    ipcRenderer.invoke('spellcheck:addToDictionary', word),
+  replaceMisspelling: (word: string) =>
+    ipcRenderer.invoke('spellcheck:replaceMisspelling', word),
+  onSpellCheckContext: (callback: (data: { misspelledWord: string; suggestions: string[] }) => void) => {
+    ipcRenderer.on('spellcheck:context', (_, data) => callback(data))
+  },
+  removeSpellCheckListener: () => {
+    ipcRenderer.removeAllListeners('spellcheck:context')
+  },
+
   // Menu action listeners
   onMenuAction: (callback: (action: string) => void) => {
     const actions = ['new-project', 'open-project', 'save-project', 'toggle-focus-mode', 'export-docx', 'export-pdf']

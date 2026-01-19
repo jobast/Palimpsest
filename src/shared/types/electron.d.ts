@@ -22,6 +22,11 @@ export interface SaveDialogResult {
 
 export type MenuAction = 'new-project' | 'open-project' | 'save-project' | 'toggle-focus-mode'
 
+export interface SpellCheckContext {
+  misspelledWord: string
+  suggestions: string[]
+}
+
 export interface ElectronAPI {
   openProject: () => Promise<DialogResult>
   saveProject: () => Promise<SaveDialogResult>
@@ -33,6 +38,11 @@ export interface ElectronAPI {
   platform: NodeJS.Platform
   onMenuAction: (callback: (action: MenuAction) => void) => void
   removeMenuListeners: () => void
+  // Spell check
+  addToDictionary: (word: string) => Promise<boolean>
+  replaceMisspelling: (word: string) => Promise<boolean>
+  onSpellCheckContext: (callback: (data: SpellCheckContext) => void) => void
+  removeSpellCheckListener: () => void
 }
 
 declare global {

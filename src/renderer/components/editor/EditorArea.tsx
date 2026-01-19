@@ -106,7 +106,8 @@ export function EditorArea() {
     content: '',
     editorProps: {
       attributes: {
-        class: 'manuscript-editor'
+        class: 'manuscript-editor',
+        spellcheck: 'true'
       }
     },
     onUpdate: ({ editor }) => {

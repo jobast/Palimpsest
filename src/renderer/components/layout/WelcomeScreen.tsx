@@ -15,32 +15,35 @@ export function WelcomeScreen() {
   }
 
   return (
-    <div className="h-screen flex flex-col items-center justify-center bg-background">
+    <div className="min-h-screen flex flex-col bg-background overflow-auto">
       {/* Title bar drag region */}
-      <div className="fixed top-0 left-0 right-0 h-8 titlebar-drag-region" />
+      <div className="fixed top-0 left-0 right-0 h-8 titlebar-drag-region z-10 bg-background" />
 
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-serif font-bold text-foreground mb-2">Palimpseste</h1>
-        <p className="text-muted-foreground">Traitement de texte pour écrivains</p>
-      </div>
+      {/* Centered content */}
+      <div className="flex-1 flex flex-col items-center justify-center px-8 pt-12 pb-8">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-serif font-bold text-foreground mb-2">Palimpseste</h1>
+          <p className="text-muted-foreground">Traitement de texte pour écrivains</p>
+        </div>
 
-      <div className="flex gap-4">
-        <WelcomeButton
-          icon={<Plus size={24} />}
-          label="Nouveau projet"
-          onClick={() => setShowNewProject(true)}
-        />
-        <WelcomeButton
-          icon={<FolderOpen size={24} />}
-          label="Ouvrir un projet"
-          onClick={openProject}
-        />
-      </div>
+        <div className="flex gap-4">
+          <WelcomeButton
+            icon={<Plus size={24} />}
+            label="Nouveau projet"
+            onClick={() => setShowNewProject(true)}
+          />
+          <WelcomeButton
+            icon={<FolderOpen size={24} />}
+            label="Ouvrir un projet"
+            onClick={openProject}
+          />
+        </div>
 
-      <div className="mt-16 text-center">
-        <p className="text-xs text-muted-foreground">
-          Projets récents apparaîtront ici
-        </p>
+        <div className="mt-16 text-center">
+          <p className="text-xs text-muted-foreground">
+            Projets récents apparaîtront ici
+          </p>
+        </div>
       </div>
     </div>
   )
@@ -200,10 +203,14 @@ export function NewProjectForm({ onCancel, isModal = false }: { onCancel: () => 
   }
 
   return (
-    <div className="h-screen flex flex-col items-center justify-center bg-background p-8">
+    <div className="min-h-screen bg-background overflow-auto">
       {/* Title bar drag region */}
-      <div className="fixed top-0 left-0 right-0 h-8 titlebar-drag-region" />
-      {content}
+      <div className="fixed top-0 left-0 right-0 h-8 titlebar-drag-region z-10 bg-background" />
+
+      {/* Content with proper spacing */}
+      <div className="flex flex-col items-center px-8 pt-16 pb-8">
+        {content}
+      </div>
     </div>
   )
 }
