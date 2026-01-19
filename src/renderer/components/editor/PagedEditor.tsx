@@ -4,19 +4,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { useUIStore } from '@/stores/uiStore'
 import { getPageDimensions } from '@/lib/pagination'
-import { ChevronUp, ChevronDown, Scissors, Copy, ClipboardPaste, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, MessageSquareQuote, ZoomIn, ZoomOut, Plus } from 'lucide-react'
-import type { SpellCheckContext } from '@shared/types/electron'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-  ContextMenuShortcut,
-} from '@/components/ui/ContextMenu'
+import { ChevronUp, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react'
 import { ViewModeToggle } from './ViewModeToggle'
 
 /**
@@ -37,110 +25,9 @@ export function PagedEditor() {
   const { zoomLevel, setZoomLevel, zoomIn, zoomOut, resetZoom } = useUIStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const [showPageNav, setShowPageNav] = useState(false)
-  const [hasSelection, setHasSelection] = useState(false)
-  const [spellCheck, setSpellCheck] = useState<SpellCheckContext | null>(null)
 
   // Zoom scale factor
   const scale = zoomLevel / 100
-
-  // Listen for spell check context from main process
-  useEffect(() => {
-    if (window.electronAPI?.onSpellCheckContext) {
-      window.electronAPI.onSpellCheckContext((data) => {
-        setSpellCheck(data)
-      })
-    }
-
-    return () => {
-      if (window.electronAPI?.removeSpellCheckListener) {
-        window.electronAPI.removeSpellCheckListener()
-      }
-    }
-  }, [])
-
-  // Track if editor has text selection
-  useEffect(() => {
-    if (!editor) return
-
-    const updateSelection = () => {
-      const { from, to } = editor.state.selection
-      setHasSelection(from !== to)
-    }
-
-    editor.on('selectionUpdate', updateSelection)
-    editor.on('transaction', updateSelection)
-
-    return () => {
-      editor.off('selectionUpdate', updateSelection)
-      editor.off('transaction', updateSelection)
-    }
-  }, [editor])
-
-  // Context menu actions
-  const handleCut = useCallback(() => {
-    if (!editor) return
-    const { from, to } = editor.state.selection
-    const text = editor.state.doc.textBetween(from, to)
-    navigator.clipboard.writeText(text)
-    editor.chain().focus().deleteSelection().run()
-  }, [editor])
-
-  const handleCopy = useCallback(() => {
-    if (!editor) return
-    const { from, to } = editor.state.selection
-    const text = editor.state.doc.textBetween(from, to)
-    navigator.clipboard.writeText(text)
-  }, [editor])
-
-  const handlePaste = useCallback(async () => {
-    if (!editor) return
-    const text = await navigator.clipboard.readText()
-    editor.chain().focus().insertContent(text).run()
-  }, [editor])
-
-  const handleBold = useCallback(() => {
-    editor?.chain().focus().toggleBold().run()
-  }, [editor])
-
-  const handleItalic = useCallback(() => {
-    editor?.chain().focus().toggleItalic().run()
-  }, [editor])
-
-  const handleUnderline = useCallback(() => {
-    editor?.chain().focus().toggleUnderline().run()
-  }, [editor])
-
-  const handleAlign = useCallback((align: 'left' | 'center' | 'right' | 'justify') => {
-    editor?.chain().focus().setTextAlign(align).run()
-  }, [editor])
-
-  const handleInsertSceneBreak = useCallback(() => {
-    editor?.chain().focus().insertContent('<p style="text-align: center">* * *</p>').run()
-  }, [editor])
-
-  const handleInsertDialogueDash = useCallback(() => {
-    editor?.chain().focus().insertContent('— ').run()
-  }, [editor])
-
-  // Spell check handlers
-  const handleReplaceWord = useCallback((suggestion: string) => {
-    window.electronAPI?.replaceMisspelling(suggestion)
-    setSpellCheck(null)
-  }, [])
-
-  const handleAddToDictionary = useCallback(() => {
-    if (spellCheck?.misspelledWord) {
-      window.electronAPI?.addToDictionary(spellCheck.misspelledWord)
-    }
-    setSpellCheck(null)
-  }, [spellCheck])
-
-  // Clear spell check when menu closes
-  const handleMenuOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      setSpellCheck(null)
-    }
-  }, [])
 
   // Get page dimensions from template
   const dims = useMemo(() => {
@@ -295,129 +182,22 @@ export function PagedEditor() {
           ))}
 
           {/* Editor content - positioned to flow through page content areas */}
-          <ContextMenu onOpenChange={handleMenuOpenChange}>
-            <ContextMenuTrigger asChild>
-              <div
-                className="absolute manuscript-content"
-                style={{
-                  top: dims.marginTop + headerHeight,
-                  left: dims.marginLeft,
-                  width: dims.width - dims.marginLeft - dims.marginRight,
-                  fontFamily: effectiveTypography.fontFamily,
-                  fontSize: effectiveTypography.fontSize,
-                  lineHeight: effectiveTypography.lineHeight,
-                  color: 'hsl(var(--paper-foreground))',
-                  '--first-line-indent': effectiveTypography.firstLineIndent,
-                } as React.CSSProperties}
-              >
-                <EditorContent editor={editor} />
-              </div>
-            </ContextMenuTrigger>
-            <ContextMenuContent className="w-56">
-              {/* Spell check suggestions */}
-              {spellCheck && spellCheck.suggestions.length > 0 && (
-                <>
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium">
-                    Orthographe : « {spellCheck.misspelledWord} »
-                  </div>
-                  {spellCheck.suggestions.slice(0, 5).map((suggestion) => (
-                    <ContextMenuItem
-                      key={suggestion}
-                      onSelect={() => handleReplaceWord(suggestion)}
-                      className="font-medium"
-                    >
-                      {suggestion}
-                    </ContextMenuItem>
-                  ))}
-                  <ContextMenuItem onSelect={handleAddToDictionary}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Ajouter au dictionnaire
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                </>
-              )}
-
-              {/* Clipboard actions */}
-              {hasSelection && (
-                <>
-                  <ContextMenuItem onSelect={handleCut}>
-                    <Scissors className="mr-2 h-4 w-4" />
-                    Couper
-                    <ContextMenuShortcut>⌘X</ContextMenuShortcut>
-                  </ContextMenuItem>
-                  <ContextMenuItem onSelect={handleCopy}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copier
-                    <ContextMenuShortcut>⌘C</ContextMenuShortcut>
-                  </ContextMenuItem>
-                </>
-              )}
-              <ContextMenuItem onSelect={handlePaste}>
-                <ClipboardPaste className="mr-2 h-4 w-4" />
-                Coller
-                <ContextMenuShortcut>⌘V</ContextMenuShortcut>
-              </ContextMenuItem>
-
-              {/* Formatting actions - only with selection */}
-              {hasSelection && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem onSelect={handleBold}>
-                    <Bold className="mr-2 h-4 w-4" />
-                    Gras
-                    <ContextMenuShortcut>⌘B</ContextMenuShortcut>
-                  </ContextMenuItem>
-                  <ContextMenuItem onSelect={handleItalic}>
-                    <Italic className="mr-2 h-4 w-4" />
-                    Italique
-                    <ContextMenuShortcut>⌘I</ContextMenuShortcut>
-                  </ContextMenuItem>
-                  <ContextMenuItem onSelect={handleUnderline}>
-                    <Underline className="mr-2 h-4 w-4" />
-                    Souligne
-                    <ContextMenuShortcut>⌘U</ContextMenuShortcut>
-                  </ContextMenuItem>
-
-                  <ContextMenuSeparator />
-                  <ContextMenuSub>
-                    <ContextMenuSubTrigger>
-                      <AlignLeft className="mr-2 h-4 w-4" />
-                      Alignement
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent>
-                      <ContextMenuItem onSelect={() => handleAlign('left')}>
-                        <AlignLeft className="mr-2 h-4 w-4" />
-                        Gauche
-                      </ContextMenuItem>
-                      <ContextMenuItem onSelect={() => handleAlign('center')}>
-                        <AlignCenter className="mr-2 h-4 w-4" />
-                        Centre
-                      </ContextMenuItem>
-                      <ContextMenuItem onSelect={() => handleAlign('right')}>
-                        <AlignRight className="mr-2 h-4 w-4" />
-                        Droite
-                      </ContextMenuItem>
-                      <ContextMenuItem onSelect={() => handleAlign('justify')}>
-                        <AlignJustify className="mr-2 h-4 w-4" />
-                        Justifie
-                      </ContextMenuItem>
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                </>
-              )}
-
-              {/* Insert actions */}
-              <ContextMenuSeparator />
-              <ContextMenuItem onSelect={handleInsertSceneBreak}>
-                <Minus className="mr-2 h-4 w-4" />
-                Inserer saut de scene
-              </ContextMenuItem>
-              <ContextMenuItem onSelect={handleInsertDialogueDash}>
-                <MessageSquareQuote className="mr-2 h-4 w-4" />
-                Inserer tiret de dialogue
-              </ContextMenuItem>
-            </ContextMenuContent>
-          </ContextMenu>
+          {/* Native context menu is handled by Electron main process */}
+          <div
+            className="absolute manuscript-content"
+            style={{
+              top: dims.marginTop + headerHeight,
+              left: dims.marginLeft,
+              width: dims.width - dims.marginLeft - dims.marginRight,
+              fontFamily: effectiveTypography.fontFamily,
+              fontSize: effectiveTypography.fontSize,
+              lineHeight: effectiveTypography.lineHeight,
+              color: 'hsl(var(--paper-foreground))',
+              '--first-line-indent': effectiveTypography.firstLineIndent,
+            } as React.CSSProperties}
+          >
+            <EditorContent editor={editor} />
+          </div>
           </div>
         </div>
       </div>

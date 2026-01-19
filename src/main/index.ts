@@ -44,14 +44,43 @@ function createWindow() {
   // Configure spell checker for French
   session.defaultSession.setSpellCheckerLanguages(['fr'])
 
-  // Handle context menu for spell check suggestions
-  // Send spell check info to renderer for integration with custom context menu
+  // Handle ALL context menus in the editor with native Electron menu
   mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menuItems: Electron.MenuItemConstructorOptions[] = []
+
+    // Spell check suggestions (if misspelled word)
     if (params.misspelledWord) {
-      mainWindow?.webContents.send('spellcheck:context', {
-        misspelledWord: params.misspelledWord,
-        suggestions: params.dictionarySuggestions
+      if (params.dictionarySuggestions.length > 0) {
+        params.dictionarySuggestions.slice(0, 5).forEach((suggestion) => {
+          menuItems.push({
+            label: suggestion,
+            click: () => mainWindow?.webContents.replaceMisspelling(suggestion)
+          })
+        })
+      } else {
+        menuItems.push({ label: 'Aucune suggestion', enabled: false })
+      }
+      menuItems.push({ type: 'separator' })
+      menuItems.push({
+        label: 'Ajouter au dictionnaire',
+        click: () => mainWindow?.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord)
       })
+      menuItems.push({ type: 'separator' })
+    }
+
+    // Standard edit options
+    if (params.editFlags.canCut || params.editFlags.canCopy) {
+      menuItems.push(
+        { label: 'Couper', role: 'cut', enabled: params.editFlags.canCut },
+        { label: 'Copier', role: 'copy', enabled: params.editFlags.canCopy }
+      )
+    }
+    menuItems.push({ label: 'Coller', role: 'paste', enabled: params.editFlags.canPaste })
+
+    // Only show menu if we have items
+    if (menuItems.length > 0) {
+      const menu = Menu.buildFromTemplate(menuItems)
+      menu.popup()
     }
   })
 
@@ -89,8 +118,8 @@ app.on('window-all-closed', () => {
 // IPC Handlers for file operations
 ipcMain.handle('dialog:openProject', async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
-    properties: ['openDirectory'],
-    filters: [{ name: 'Palimpseste Project', extensions: ['palim'] }]
+    properties: ['openDirectory', 'treatPackageAsDirectory'],
+    message: 'Sélectionnez un dossier de projet Palimpseste (.palim)'
   })
   return result
 })
