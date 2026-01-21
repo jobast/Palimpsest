@@ -29,6 +29,22 @@
     --paper-foreground: 0 0% 15%;
   }
 
+  /* Paper color variants - Light mode */
+  :root.paper-white {
+    --paper: 0 0% 100%;
+    --paper-foreground: 0 0% 10%;
+  }
+
+  :root.paper-cream {
+    --paper: 40 30% 96%;
+    --paper-foreground: 0 0% 15%;
+  }
+
+  :root.paper-sepia {
+    --paper: 35 40% 92%;
+    --paper-foreground: 25 20% 20%;
+  }
+
   .dark {
     --background: 0 0% 10%;
     --foreground: 0 0% 95%;
@@ -51,6 +67,22 @@
     --ring: 220 70% 60%;
     --paper: 40 10% 15%;
     --paper-foreground: 0 0% 90%;
+  }
+
+  /* Paper color variants - Dark mode */
+  .dark.paper-white {
+    --paper: 0 0% 18%;
+    --paper-foreground: 0 0% 90%;
+  }
+
+  .dark.paper-cream {
+    --paper: 40 10% 15%;
+    --paper-foreground: 40 10% 90%;
+  }
+
+  .dark.paper-sepia {
+    --paper: 30 15% 12%;
+    --paper-foreground: 35 15% 85%;
   }
 }
 

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 type SidebarPanel = 'project' | 'sheets' | 'analysis' | 'pages'
+type PaperColor = 'white' | 'cream' | 'sepia'
 
 interface UIState {
   sidebarOpen: boolean
@@ -9,6 +10,7 @@ interface UIState {
   statsSidebarOpen: boolean
   rightPanelOpen: boolean
   theme: 'light' | 'dark' | 'system'
+  paperColor: PaperColor
   showWordCount: boolean
   focusMode: boolean
   settingsOpen: boolean
@@ -26,6 +28,7 @@ interface UIState {
   toggleStatsSidebar: () => void
   toggleRightPanel: () => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
+  setPaperColor: (color: PaperColor) => void
   toggleWordCount: () => void
   toggleFocusMode: () => void
   openSettings: () => void
@@ -51,6 +54,12 @@ const applyTheme = (theme: 'light' | 'dark' | 'system') => {
   }
 }
 
+// Apply paper color to document
+const applyPaperColor = (color: PaperColor) => {
+  document.documentElement.classList.remove('paper-white', 'paper-cream', 'paper-sepia')
+  document.documentElement.classList.add(`paper-${color}`)
+}
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
@@ -59,6 +68,7 @@ export const useUIStore = create<UIState>()(
       statsSidebarOpen: true,
       rightPanelOpen: false,
       theme: 'light',
+      paperColor: 'cream',
       showWordCount: true,
       focusMode: false,
       settingsOpen: false,
@@ -83,6 +93,11 @@ export const useUIStore = create<UIState>()(
         applyTheme(theme)
       },
 
+      setPaperColor: (color) => {
+        set({ paperColor: color })
+        applyPaperColor(color)
+      },
+
       toggleWordCount: () => set((state) => ({ showWordCount: !state.showWordCount })),
 
       toggleFocusMode: () => set((state) => ({
@@ -105,10 +120,18 @@ export const useUIStore = create<UIState>()(
       name: 'palimpseste-ui-settings',
       partialize: (state) => ({
         theme: state.theme,
+        paperColor: state.paperColor,
         autoSaveEnabled: state.autoSaveEnabled,
         autoSaveInterval: state.autoSaveInterval,
         zoomLevel: state.zoomLevel
-      })
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Apply saved settings on app start
+        if (state) {
+          applyTheme(state.theme)
+          applyPaperColor(state.paperColor)
+        }
+      }
     }
   )
 )
