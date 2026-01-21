@@ -67,8 +67,8 @@ export function templateToPaginationOptions(
     footerLeft,
     footerRight,
     pageBreakBackground: 'hsl(var(--muted))', // Match our theme
-    pageGapBorderColor: 'hsl(var(--border))',
-    pageGapBorderSize: 1,
+    pageGapBorderColor: 'transparent',
+    pageGapBorderSize: 0,
   }
 }
 
@@ -91,7 +91,7 @@ export function getDefaultPaginationOptions(): Partial<PaginationPlusOptions> {
     footerLeft: '',
     footerRight: '{page}',
     pageBreakBackground: 'hsl(var(--muted))',
-    pageGapBorderColor: 'hsl(var(--border))',
-    pageGapBorderSize: 1,
+    pageGapBorderColor: 'transparent',
+    pageGapBorderSize: 0,
   }
 }

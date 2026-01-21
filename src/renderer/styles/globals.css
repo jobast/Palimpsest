@@ -675,25 +675,28 @@
 /* The editor with pagination - this is the "page" */
 .ProseMirror.rm-with-pagination {
   background-color: hsl(var(--paper));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.06),
+    0 4px 12px rgba(0,0,0,0.08);
   color: hsl(var(--paper-foreground));
 }
 
-/* Page break gap between pages - matches editor container background */
-.rm-pagination-gap,
-div.rm-pagination-gap,
-.ProseMirror .rm-pagination-gap {
-  background: hsl(var(--muted)) !important;
+/* Page break gap between pages - clean solution with inset shadows */
+.rm-pagination-gap {
   background-color: hsl(var(--muted)) !important;
   border: none !important;
-  border-left: none !important;
-  border-right: none !important;
-  border-left-width: 0 !important;
-  border-right-width: 0 !important;
-  border-left-style: none !important;
-  border-right-style: none !important;
-  outline: none !important;
-  box-shadow: none !important;
+  width: 100% !important;
+  margin-left: 0 !important;
+  /* Inset shadows for depth effect */
+  box-shadow:
+    inset 0 3px 6px rgba(0,0,0,0.08),   /* Shadow from top (page above) */
+    inset 0 -3px 6px rgba(0,0,0,0.04);  /* Shadow from bottom (page below) */
+}
+
+/* Remove hacky pseudo-elements */
+.rm-pagination-gap::before,
+.rm-pagination-gap::after {
+  display: none;
 }
 
 /* Header styling */
