@@ -679,12 +679,12 @@
   color: hsl(var(--paper-foreground));
 }
 
-/* Page break gap between pages - transparent to show app background */
+/* Page break gap between pages - matches editor container background */
 .rm-pagination-gap,
 div.rm-pagination-gap,
 .ProseMirror .rm-pagination-gap {
-  background: transparent !important;
-  background-color: transparent !important;
+  background: hsl(var(--muted)) !important;
+  background-color: hsl(var(--muted)) !important;
   border: none !important;
   border-left: none !important;
   border-right: none !important;
