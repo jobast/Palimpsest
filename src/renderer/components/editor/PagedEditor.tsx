@@ -38,7 +38,7 @@ export function PagedEditor() {
       // tiptap-pagination-plus stores page info in the DOM
       // Count page break elements to determine total pages
       const editorElement = editor.view.dom as HTMLElement
-      const pageBreaks = editorElement.querySelectorAll('.tiptap-pagination-plus-page-break')
+      const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
       const count = Math.max(1, pageBreaks.length + 1)
       setTotalPages(count)
 
@@ -69,7 +69,7 @@ export function PagedEditor() {
 
     // Find page breaks and determine which page we're on
     const editorElement = editor.view.dom as HTMLElement
-    const pageBreaks = editorElement.querySelectorAll('.tiptap-pagination-plus-page-break')
+    const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
     const containerScroll = containerRef.current.scrollTop
     const containerRect = containerRef.current.getBoundingClientRect()
 
@@ -92,7 +92,7 @@ export function PagedEditor() {
     if (!containerRef.current || !editor) return
 
     const editorElement = editor.view.dom as HTMLElement
-    const pageBreaks = editorElement.querySelectorAll('.tiptap-pagination-plus-page-break')
+    const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
 
     if (pageNum === 1) {
       containerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
