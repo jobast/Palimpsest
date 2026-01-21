@@ -1,4 +1,4 @@
 export * from './constants'
 export * from './unitConversions'
 export * from './pageBreakCalculator'
-export * from './paginationPlusAdapter'
+export * from './paginationAdapter'

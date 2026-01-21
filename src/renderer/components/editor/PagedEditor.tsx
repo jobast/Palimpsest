@@ -9,7 +9,7 @@ import { ViewModeToggle } from './ViewModeToggle'
 /**
  * PagedEditor Component
  *
- * A paginated editor using tiptap-pagination-plus for automatic page breaks.
+ * A paginated editor using hugs7/tiptap-extension-pagination for automatic page breaks.
  * The extension handles all pagination logic, headers, footers, and page frames.
  *
  * This component provides:
@@ -35,11 +35,10 @@ export function PagedEditor() {
     if (!editor) return
 
     const updatePageCount = () => {
-      // tiptap-pagination-plus stores page info in the DOM
-      // Count page break elements to determine total pages
+      // hugs7/tiptap-extension-pagination uses PageNode with data-page attribute
       const editorElement = editor.view.dom as HTMLElement
-      const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
-      const count = Math.max(1, pageBreaks.length + 1)
+      const pageNodes = editorElement.querySelectorAll('[data-page="true"]')
+      const count = Math.max(1, pageNodes.length)
       setTotalPages(count)
 
       // Sync with pagination store for other components
@@ -55,8 +54,8 @@ export function PagedEditor() {
     // Update on content changes
     editor.on('update', updatePageCount)
 
-    // Initial calculation
-    updatePageCount()
+    // Initial calculation - delay slightly to allow DOM to render
+    setTimeout(updatePageCount, 100)
 
     return () => {
       editor.off('update', updatePageCount)
@@ -67,18 +66,19 @@ export function PagedEditor() {
   const handleScroll = useCallback(() => {
     if (!containerRef.current || !editor) return
 
-    // Find page breaks and determine which page we're on
+    // Find page nodes and determine which page we're viewing
     const editorElement = editor.view.dom as HTMLElement
-    const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
+    const pageNodes = editorElement.querySelectorAll('[data-page="true"]')
     const containerScroll = containerRef.current.scrollTop
     const containerRect = containerRef.current.getBoundingClientRect()
 
     let page = 1
-    pageBreaks.forEach((breakEl, index) => {
-      const breakRect = breakEl.getBoundingClientRect()
-      const breakTop = breakRect.top - containerRect.top + containerScroll
-      if (containerScroll >= breakTop - 100) {
-        page = index + 2
+    pageNodes.forEach((pageEl, index) => {
+      const pageRect = pageEl.getBoundingClientRect()
+      const pageTop = pageRect.top - containerRect.top + containerScroll
+      // Consider we're on this page if its top is near or above the viewport center
+      if (containerScroll >= pageTop - containerRect.height / 2) {
+        page = index + 1
       }
     })
 
@@ -92,18 +92,16 @@ export function PagedEditor() {
     if (!containerRef.current || !editor) return
 
     const editorElement = editor.view.dom as HTMLElement
-    const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
+    const pageNodes = editorElement.querySelectorAll('[data-page="true"]')
 
-    if (pageNum === 1) {
+    const targetPage = pageNodes[pageNum - 1] // 0-indexed array
+    if (targetPage) {
+      const pageRect = targetPage.getBoundingClientRect()
+      const containerRect = containerRef.current.getBoundingClientRect()
+      const scrollTop = containerRef.current.scrollTop + (pageRect.top - containerRect.top) - 40
+      containerRef.current.scrollTo({ top: scrollTop, behavior: 'smooth' })
+    } else if (pageNum === 1) {
       containerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
-    } else {
-      const targetBreak = pageBreaks[pageNum - 2] // -2 because first page has no break before it
-      if (targetBreak) {
-        const breakRect = targetBreak.getBoundingClientRect()
-        const containerRect = containerRef.current.getBoundingClientRect()
-        const scrollTop = containerRef.current.scrollTop + (breakRect.top - containerRect.top) - 40
-        containerRef.current.scrollTo({ top: scrollTop, behavior: 'smooth' })
-      }
     }
     setShowPageNav(false)
   }, [editor])

@@ -7,7 +7,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import Typography from '@tiptap/extension-typography'
 import Highlight from '@tiptap/extension-highlight'
-import { PaginationPlus } from 'tiptap-pagination-plus'
+import PaginationExtension from 'tiptap-extension-pagination'
 import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useStatsStore } from '@/stores/statsStore'
@@ -15,7 +15,7 @@ import { useAnalysisStore } from '@/stores/analysisStore'
 import { useWritingTimer } from '@/hooks/useWritingTimer'
 import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, TextAnalysisDecorations } from './extensions'
 import type { WordStatsData } from './extensions'
-import { templateToPaginationOptions } from '@/lib/pagination/paginationPlusAdapter'
+import { templateToPaginationOptions } from '@/lib/pagination/paginationAdapter'
 import { PagedEditor } from './PagedEditor'
 import { SheetEditor } from './SheetEditor'
 import type { ManuscriptItem } from '@shared/types/project'
@@ -102,7 +102,7 @@ export function EditorArea() {
       SceneBreak,
       ChapterTitle,
       FirstParagraph,
-      PaginationPlus.configure(paginationOptions),
+      PaginationExtension.configure(paginationOptions),
       TextAnalysisDecorations
     ],
     content: '',
@@ -170,24 +170,17 @@ export function EditorArea() {
 
     const options = templateToPaginationOptions(currentTemplate)
 
-    // Use PaginationPlus commands to update settings
-    editor.chain()
-      .updatePageHeight(options.pageHeight!)
-      .updatePageWidth(options.pageWidth!)
-      .updatePageGap(options.pageGap!)
-      .updateMargins({
-        top: options.marginTop!,
-        bottom: options.marginBottom!,
-        left: options.marginLeft!,
-        right: options.marginRight!
-      })
-      .updateContentMargins({
-        top: options.contentMarginTop!,
-        bottom: options.contentMarginBottom!
-      })
-      .updateHeaderContent(options.headerLeft || '', options.headerRight || '')
-      .updateFooterContent(options.footerLeft || '', options.footerRight || '')
-      .run()
+    // Use hugs7 PaginationExtension commands to update settings
+    // Note: This extension uses paper sizes and mm for margins
+    if (options.defaultPaperSize) {
+      editor.commands.setDocumentPaperSize(options.defaultPaperSize)
+    }
+    if (options.defaultMarginConfig) {
+      editor.commands.setDocumentPageMargins(options.defaultMarginConfig)
+    }
+    if (options.defaultPaperOrientation) {
+      editor.commands.setDocumentPaperOrientation(options.defaultPaperOrientation)
+    }
   }, [editor, currentTemplate])
 
   // Subscribe to analysis store changes to refresh decorations

@@ -664,7 +664,7 @@
 }
 
 /* ===============================================
-   TipTap Pagination Plus Styles
+   TipTap Pagination Extension Styles (hugs7)
    =============================================== */
 
 /* Container for the paginated editor */
@@ -672,67 +672,42 @@
   background-color: hsl(var(--muted));
 }
 
-/* The editor with pagination - this is the "page" */
-.ProseMirror.rm-with-pagination {
-  background-color: hsl(var(--paper));
+/* ProseMirror editor base styles */
+.ProseMirror {
+  color: hsl(var(--paper-foreground));
+}
+
+/* Page nodes from hugs7/tiptap-extension-pagination */
+[data-page="true"],
+.page {
+  background-color: hsl(var(--paper)) !important;
   box-shadow:
     0 2px 4px rgba(0,0,0,0.06),
     0 4px 12px rgba(0,0,0,0.08);
   color: hsl(var(--paper-foreground));
+  margin-bottom: 40px;  /* Gap between pages - no element, just margin */
 }
 
-/* Page break gap between pages - clean solution with inset shadows */
-.rm-pagination-gap {
-  background-color: hsl(var(--muted)) !important;
-  border: none !important;
-  width: 100% !important;
-  margin-left: 0 !important;
-  /* Inset shadows for depth effect */
-  box-shadow:
-    inset 0 3px 6px rgba(0,0,0,0.08),   /* Shadow from top (page above) */
-    inset 0 -3px 6px rgba(0,0,0,0.04);  /* Shadow from bottom (page below) */
+/* First page doesn't need top margin */
+[data-page="true"]:first-child,
+.page:first-child {
+  margin-top: 0;
 }
 
-/* Remove hacky pseudo-elements */
-.rm-pagination-gap::before,
-.rm-pagination-gap::after {
-  display: none;
+/* Last page doesn't need bottom margin (container padding handles it) */
+[data-page="true"]:last-child,
+.page:last-child {
+  margin-bottom: 0;
 }
 
-/* Header styling */
-.rm-page-header {
+/* Body node inside pages */
+.body {
+  background-color: hsl(var(--paper));
+}
+
+/* Header/footer nodes */
+.header-footer {
   color: hsl(var(--muted-foreground));
   font-size: 10pt;
-  background-color: hsl(var(--paper));
-}
-
-.rm-page-header-left,
-.rm-page-header-right {
-  color: hsl(var(--muted-foreground));
-}
-
-/* Footer styling */
-.rm-page-footer {
-  color: hsl(var(--muted-foreground));
-  font-size: 10pt;
-  background-color: hsl(var(--paper));
-}
-
-.rm-page-footer-left,
-.rm-page-footer-right {
-  color: hsl(var(--muted-foreground));
-}
-
-/* First page header */
-.rm-first-page-header {
-  background-color: hsl(var(--paper));
-}
-
-/* Page break sections need paper background */
-.rm-page-break .page {
-  background-color: hsl(var(--paper));
-}
-
-.rm-page-break .breaker {
   background-color: hsl(var(--paper));
 }
