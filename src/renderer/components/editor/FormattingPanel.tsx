@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
+import { useUIStore } from '@/stores/uiStore'
 import {
   Bold,
   Italic,
@@ -73,6 +74,7 @@ export function FormattingPanel() {
     getEffectiveTypography
   } = useEditorStore()
   const { updateTypographyOverrides } = useProjectStore()
+  const { paperColor, setPaperColor } = useUIStore()
 
   // Get effective typography (template + user overrides)
   const effectiveTypography = getEffectiveTypography()
@@ -350,6 +352,33 @@ export function FormattingPanel() {
         </div>
       </section>
 
+      {/* Paper Color Section */}
+      <section>
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Couleur du papier
+        </h3>
+        <div className="flex gap-2">
+          <PaperColorButton
+            color="white"
+            label="Blanc"
+            active={paperColor === 'white'}
+            onClick={() => setPaperColor('white')}
+          />
+          <PaperColorButton
+            color="cream"
+            label="Crème"
+            active={paperColor === 'cream'}
+            onClick={() => setPaperColor('cream')}
+          />
+          <PaperColorButton
+            color="sepia"
+            label="Sépia"
+            active={paperColor === 'sepia'}
+            onClick={() => setPaperColor('sepia')}
+          />
+        </div>
+      </section>
+
       {/* Page Format Section - Locked */}
       <section>
         <div className="flex items-center gap-1 mb-3">
@@ -465,5 +494,48 @@ function MarginDisplay({ label, value }: MarginDisplayProps) {
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs font-medium">{value}</span>
     </div>
+  )
+}
+
+function PaperColorButton({
+  color,
+  label,
+  active,
+  onClick
+}: {
+  color: 'white' | 'cream' | 'sepia'
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  const colorStyles = {
+    white: 'bg-white',
+    cream: 'bg-[hsl(40,30%,96%)]',
+    sepia: 'bg-[hsl(35,40%,92%)]'
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex-1 flex flex-col items-center gap-2 p-3 rounded-lg border transition-colors',
+        active
+          ? 'border-primary bg-primary/5'
+          : 'border-border hover:border-primary/50'
+      )}
+    >
+      <div
+        className={cn(
+          'w-8 h-8 rounded border border-border shadow-sm',
+          colorStyles[color]
+        )}
+      />
+      <span className={cn(
+        'text-xs font-medium',
+        active ? 'text-primary' : 'text-muted-foreground'
+      )}>
+        {label}
+      </span>
+    </button>
   )
 }

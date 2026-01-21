@@ -9,12 +9,12 @@ import { StatsPanel } from '../stats/StatsPanel'
 import { FormattingPanel } from '../editor/FormattingPanel'
 import { AnalysisPanel } from '../analysis/AnalysisPanel'
 import { cn } from '@/lib/utils'
-import { BarChart3, Type, Search } from 'lucide-react'
+import { BarChart3, Type, Search, X } from 'lucide-react'
 
 type RightSidebarTab = 'stats' | 'format' | 'analysis'
 
 export function Layout() {
-  const { sidebarOpen, focusMode, statsSidebarOpen } = useUIStore()
+  const { sidebarOpen, focusMode, statsSidebarOpen, toggleFocusMode } = useUIStore()
   const { project, isLoading } = useProjectStore()
   const [rightSidebarTab, setRightSidebarTab] = useState<RightSidebarTab>('stats')
 
@@ -39,12 +39,19 @@ export function Layout() {
         </div>
       )}
 
-      {/* Focus mode exit hint */}
+      {/* Focus mode exit button */}
       {focusMode && (
-        <div className="absolute top-4 right-4 z-50 opacity-0 hover:opacity-100 transition-opacity duration-300">
-          <div className="text-xs text-muted-foreground bg-card/80 backdrop-blur px-3 py-1.5 rounded-full border border-border shadow-sm">
-            Appuyez sur <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">⌘⇧F</kbd> pour quitter
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+          <div className="text-xs text-muted-foreground bg-card/80 backdrop-blur px-3 py-1.5 rounded-full border border-border shadow-sm opacity-50 hover:opacity-100 transition-opacity">
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">⌘⇧F</kbd>
           </div>
+          <button
+            onClick={toggleFocusMode}
+            className="p-2 bg-card/80 backdrop-blur rounded-full border border-border shadow-sm text-muted-foreground hover:text-foreground hover:bg-card transition-all opacity-50 hover:opacity-100"
+            title="Quitter le mode focus"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
 

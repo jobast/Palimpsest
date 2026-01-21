@@ -27,13 +27,15 @@ import {
   Settings,
   ChevronDown,
   FileText,
-  Asterisk
+  Asterisk,
+  Sun,
+  Moon
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function Toolbar() {
   const { editor } = useEditorStore()
-  const { toggleSidebar, sidebarOpen, toggleFocusMode, statsSidebarOpen, toggleStatsSidebar, openSettings } = useUIStore()
+  const { toggleSidebar, sidebarOpen, toggleFocusMode, statsSidebarOpen, toggleStatsSidebar, openSettings, theme, setTheme } = useUIStore()
   const { saveProject, isDirty } = useProjectStore()
 
   if (!editor) {
@@ -46,10 +48,8 @@ export function Toolbar() {
 
   return (
     <div className="h-10 border-b border-border bg-card flex items-center px-2 gap-1 titlebar-no-drag min-w-0">
-      {/* Layout controls */}
+      {/* Left sidebar toggle */}
       <ToolbarButton icon={<PanelLeft size={16} />} onClick={toggleSidebar} active={sidebarOpen} title="Manuscrit" />
-      <ToolbarButton icon={<PanelRight size={16} />} onClick={toggleStatsSidebar} active={statsSidebarOpen} title="Statistiques" />
-      <ToolbarButton icon={<Maximize2 size={16} />} onClick={toggleFocusMode} title="Mode focus" />
 
       <ToolbarSeparator />
 
@@ -189,6 +189,21 @@ export function Toolbar() {
       <TemplateSelector />
 
       <ToolbarSeparator />
+
+      {/* Focus mode */}
+      <ToolbarButton icon={<Maximize2 size={16} />} onClick={toggleFocusMode} title="Mode focus (⌘⇧F)" />
+
+      {/* Right sidebar toggle */}
+      <ToolbarButton icon={<PanelRight size={16} />} onClick={toggleStatsSidebar} active={statsSidebarOpen} title="Panneau Stats/Format" />
+
+      <ToolbarSeparator />
+
+      {/* Theme toggle */}
+      <ToolbarButton
+        icon={theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        title={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+      />
 
       <ToolbarButton icon={<Settings size={16} />} onClick={openSettings} title="Paramètres" />
     </div>
