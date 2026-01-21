@@ -20,6 +20,8 @@ function App() {
   const autoSaveInterval = useUIStore(state => state.autoSaveInterval)
   const theme = useUIStore(state => state.theme)
   const setTheme = useUIStore(state => state.setTheme)
+  const paperColor = useUIStore(state => state.paperColor)
+  const setPaperColor = useUIStore(state => state.setPaperColor)
   const { exportDocx, exportPdf } = useExport()
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const autoSaveTimerRef = useRef<number | null>(null)
@@ -28,9 +30,10 @@ function App() {
     loadLastProject()
   }, [loadLastProject])
 
-  // Apply theme on initial load
+  // Apply theme and paper color on initial load
   useEffect(() => {
     setTheme(theme)
+    setPaperColor(paperColor)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save logic
