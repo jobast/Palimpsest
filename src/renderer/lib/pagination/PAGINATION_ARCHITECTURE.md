@@ -177,7 +177,7 @@ import { PAGE_GAP, HEADER_HEIGHT, FOOTER_HEIGHT } from '@/lib/pagination'
 
 ## Historical Issues Fixed
 
-### January 2026: Cumulative Drift Fix
+### January 2026: Cumulative Drift Fix (Phase 1)
 
 **Problem:** Pages had cumulative vertical drift making editor unusable.
 
@@ -187,3 +187,62 @@ import { PAGE_GAP, HEADER_HEIGHT, FOOTER_HEIGHT } from '@/lib/pagination'
 3. Typography overrides not passed to measurement
 
 **Solution:** See commit `f194442` for full details.
+
+### January 2026: Measurement Fix (Phase 2)
+
+**Problem:** Clone-based measurement returned incorrect heights (1900-3000px for
+nodes that should be 17-50px). This caused:
+- Only 2-3 pages generated regardless of content
+- Text flowing continuously without stopping at page boundaries
+- Every node being detected as "oversized"
+
+**Root cause:**
+The clone-and-measure-in-hidden-container approach was fundamentally broken:
+- Cloned nodes lost their layout context
+- Hidden container's visibility:hidden prevented proper layout calculation
+- Measurement returned container/document height instead of individual node height
+
+**Solution:**
+Changed to **direct DOM measurement** - measure nodes directly in the editor's
+already-rendered DOM rather than cloning:
+
+```typescript
+// OLD (broken): Clone to hidden container
+const clone = domNode.cloneNode(true)
+measurementContainer.appendChild(clone)
+const height = measureNodeHeight(clone)  // WRONG: returns huge values
+
+// NEW (working): Measure in-place
+const height = measureNodeInEditor(domNode)  // CORRECT: actual rendered height
+```
+
+Key changes:
+- `measureNodeInEditor()` measures nodes directly via `getBoundingClientRect()`
+- Width ratio scaling accounts for zoom levels
+- No more hidden measurement container needed
+- Removed unused `applyManuscriptStyles()` function
+
+**Result:**
+- Correct height measurements (17-50px for paragraphs, 300+px for chapter titles)
+- Pages break correctly at content boundaries
+- Text properly contained within page frames
+- Works across all templates
+
+## Known Limitations
+
+### Paragraph Splitting (Not Yet Implemented)
+
+Paragraphs are treated as atomic units. When a paragraph doesn't fit on the
+current page, the ENTIRE paragraph moves to the next page. This can cause:
+- Large whitespace at the bottom of pages
+- Paragraph "jumping" when typing near page boundaries
+
+**Why this happens:**
+ProseMirror nodes are atomic - we can only break BETWEEN nodes, not within them.
+
+**Future solution:** Implement paragraph splitting by:
+1. Detecting when a paragraph would overflow
+2. Calculating the split point based on line height
+3. Creating a visual "continuation" that renders the split content
+
+This is tracked as a future improvement in the roadmap.

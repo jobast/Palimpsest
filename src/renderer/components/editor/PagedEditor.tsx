@@ -1,71 +1,112 @@
-import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
+import { useRef, useCallback, useState, useEffect } from 'react'
 import { EditorContent } from '@tiptap/react'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { useUIStore } from '@/stores/uiStore'
-import { getPageDimensions, PAGE_GAP, HEADER_HEIGHT, FOOTER_HEIGHT } from '@/lib/pagination'
 import { ChevronUp, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react'
 import { ViewModeToggle } from './ViewModeToggle'
 
 /**
  * PagedEditor Component
  *
- * A fully editable paginated editor with fixed-size pages.
+ * A paginated editor using tiptap-pagination-plus for automatic page breaks.
+ * The extension handles all pagination logic, headers, footers, and page frames.
  *
- * Architecture:
- * - Page frames rendered for each page (visual containers with headers/footers)
- * - Single EditorContent positioned to flow through page frames
- * - PageBreakDecorations add vertical space between pages
- * - Page frames are pointer-events: none so clicks reach the editor
+ * This component provides:
+ * - Scrollable container for the editor
+ * - Zoom controls
+ * - Page navigation
  */
 export function PagedEditor() {
-  const { editor, currentTemplate, getEffectiveTypography } = useEditorStore()
+  const { editor, getEffectiveTypography } = useEditorStore()
   const effectiveTypography = getEffectiveTypography()
-  const { totalPages, currentPage, setCurrentPage } = usePaginationStore()
+  const { setPages, setCurrentPage: setStorePage } = usePaginationStore()
   const { zoomLevel, setZoomLevel, zoomIn, zoomOut, resetZoom } = useUIStore()
   const containerRef = useRef<HTMLDivElement>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [showPageNav, setShowPageNav] = useState(false)
 
   // Zoom scale factor
   const scale = zoomLevel / 100
 
-  // Get page dimensions from template
-  const dims = useMemo(() => {
-    return getPageDimensions(currentTemplate)
-  }, [currentTemplate])
+  // Calculate page count from editor extension storage
+  useEffect(() => {
+    if (!editor) return
 
-  const headerHeight = currentTemplate.header?.show ? HEADER_HEIGHT : 0
-  const footerHeight = currentTemplate.footer?.show ? FOOTER_HEIGHT : 0
+    const updatePageCount = () => {
+      // tiptap-pagination-plus stores page info in the DOM
+      // Count page break elements to determine total pages
+      const editorElement = editor.view.dom as HTMLElement
+      const pageBreaks = editorElement.querySelectorAll('.tiptap-pagination-plus-page-break')
+      const count = Math.max(1, pageBreaks.length + 1)
+      setTotalPages(count)
 
-  // Calculate total height needed for all pages
-  const totalHeight = useMemo(() => {
-    return totalPages * dims.height + (totalPages - 1) * PAGE_GAP
-  }, [totalPages, dims.height, PAGE_GAP])
+      // Sync with pagination store for other components
+      const pages = Array.from({ length: count }, (_, i) => ({
+        pageNumber: i + 1,
+        startPos: 0,
+        endPos: 0,
+        contentHeight: 0
+      }))
+      setPages(pages, [])
+    }
 
-  // Calculate position of each page
-  const getPageTop = useCallback((pageNum: number) => {
-    return (pageNum - 1) * (dims.height + PAGE_GAP)
-  }, [dims.height, PAGE_GAP])
+    // Update on content changes
+    editor.on('update', updatePageCount)
+
+    // Initial calculation
+    updatePageCount()
+
+    return () => {
+      editor.off('update', updatePageCount)
+    }
+  }, [editor, setPages])
 
   // Handle scroll to update current page indicator
   const handleScroll = useCallback(() => {
     if (!containerRef.current || !editor) return
 
-    const scrollTop = containerRef.current.scrollTop
-    const pageHeight = dims.height + PAGE_GAP
-    const page = Math.floor(scrollTop / pageHeight) + 1
-    setCurrentPage(Math.min(Math.max(1, page), Math.max(1, totalPages)))
-  }, [editor, dims.height, PAGE_GAP, totalPages, setCurrentPage])
+    // Find page breaks and determine which page we're on
+    const editorElement = editor.view.dom as HTMLElement
+    const pageBreaks = editorElement.querySelectorAll('.tiptap-pagination-plus-page-break')
+    const containerScroll = containerRef.current.scrollTop
+    const containerRect = containerRef.current.getBoundingClientRect()
+
+    let page = 1
+    pageBreaks.forEach((breakEl, index) => {
+      const breakRect = breakEl.getBoundingClientRect()
+      const breakTop = breakRect.top - containerRect.top + containerScroll
+      if (containerScroll >= breakTop - 100) {
+        page = index + 2
+      }
+    })
+
+    const newPage = Math.min(Math.max(1, page), Math.max(1, totalPages))
+    setCurrentPage(newPage)
+    setStorePage(newPage) // Sync with store
+  }, [editor, totalPages, setStorePage])
 
   // Scroll to a specific page
   const scrollToPage = useCallback((pageNum: number) => {
-    if (!containerRef.current) return
-    containerRef.current.scrollTo({
-      top: getPageTop(pageNum),
-      behavior: 'smooth'
-    })
+    if (!containerRef.current || !editor) return
+
+    const editorElement = editor.view.dom as HTMLElement
+    const pageBreaks = editorElement.querySelectorAll('.tiptap-pagination-plus-page-break')
+
+    if (pageNum === 1) {
+      containerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    } else {
+      const targetBreak = pageBreaks[pageNum - 2] // -2 because first page has no break before it
+      if (targetBreak) {
+        const breakRect = targetBreak.getBoundingClientRect()
+        const containerRect = containerRef.current.getBoundingClientRect()
+        const scrollTop = containerRef.current.scrollTop + (breakRect.top - containerRect.top) - 40
+        containerRef.current.scrollTo({ top: scrollTop, behavior: 'smooth' })
+      }
+    }
     setShowPageNav(false)
-  }, [getPageTop])
+  }, [editor])
 
   const goToPreviousPage = useCallback(() => {
     if (currentPage > 1) scrollToPage(currentPage - 1)
@@ -76,10 +117,7 @@ export function PagedEditor() {
   }, [currentPage, totalPages, scrollToPage])
 
   // Generate page numbers array
-  const pageNumbers = useMemo(() =>
-    Array.from({ length: Math.max(1, totalPages) }, (_, i) => i + 1),
-    [totalPages]
-  )
+  const pageNumbers = Array.from({ length: Math.max(1, totalPages) }, (_, i) => i + 1)
 
   // Listen for scroll-to-page events
   useEffect(() => {
@@ -109,94 +147,27 @@ export function PagedEditor() {
         onScroll={handleScroll}
         style={{ paddingTop: 40, paddingBottom: 40 }}
       >
-        {/* Zoom wrapper - centers and scales the pages */}
+        {/* Zoom wrapper - centers and scales the editor */}
         <div
           className="flex justify-center"
           style={{
             width: '100%',
-            minHeight: totalHeight * scale + 80,
+            minHeight: '100%',
           }}
         >
-          {/* Pages container - holds all page frames and editor content */}
+          {/* Editor container with zoom transform */}
           <div
-            className="relative"
+            className="manuscript-content pagination-plus-container"
             style={{
-              width: dims.width,
-              height: totalHeight,
               transform: `scale(${scale})`,
               transformOrigin: 'top center',
-            }}
-          >
-          {/* Page frames - visual containers for each page */}
-          {pageNumbers.map((pageNum) => (
-            <div
-              key={pageNum}
-              className="absolute bg-paper pointer-events-none"
-              style={{
-                top: getPageTop(pageNum),
-                left: 0,
-                width: dims.width,
-                height: dims.height,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1), 0 8px 24px rgba(0,0,0,0.1)',
-                borderRadius: 3,
-              }}
-            >
-              {/* Page header */}
-              {currentTemplate.header?.show && (
-                <div
-                  className="absolute top-0 left-0 right-0 flex items-end text-muted-foreground"
-                  style={{
-                    height: dims.marginTop + headerHeight,
-                    padding: `${dims.marginTop / 2}px ${dims.marginRight}px 8px ${dims.marginLeft}px`,
-                    fontFamily: currentTemplate.typography.fontFamily,
-                    fontSize: currentTemplate.header?.fontSize || '10pt',
-                    justifyContent: pageNum % 2 === 0 ? 'flex-start' : 'flex-end',
-                    borderBottom: '1px solid hsl(var(--border) / 0.2)',
-                  }}
-                >
-                  <span>
-                    {currentTemplate.header?.content
-                      ?.replace('{page}', String(pageNum))
-                      .replace('{total}', String(totalPages)) || ''}
-                  </span>
-                </div>
-              )}
-
-              {/* Page footer */}
-              {currentTemplate.footer?.show && (
-                <div
-                  className="absolute bottom-0 left-0 right-0 flex items-center justify-center text-muted-foreground"
-                  style={{
-                    height: dims.marginBottom + footerHeight,
-                    padding: `8px ${dims.marginRight}px ${dims.marginBottom / 2}px ${dims.marginLeft}px`,
-                    fontFamily: currentTemplate.typography.fontFamily,
-                    fontSize: currentTemplate.footer?.fontSize || '10pt',
-                    borderTop: '1px solid hsl(var(--border) / 0.2)',
-                  }}
-                >
-                  {currentTemplate.footer.showPageNumber && <span>{pageNum}</span>}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Editor content - positioned to flow through page content areas */}
-          {/* Native context menu is handled by Electron main process */}
-          <div
-            className="absolute manuscript-content"
-            style={{
-              top: dims.marginTop + headerHeight,
-              left: dims.marginLeft,
-              width: dims.width - dims.marginLeft - dims.marginRight,
               fontFamily: effectiveTypography.fontFamily,
               fontSize: effectiveTypography.fontSize,
               lineHeight: effectiveTypography.lineHeight,
-              color: 'hsl(var(--paper-foreground))',
               '--first-line-indent': effectiveTypography.firstLineIndent,
             } as React.CSSProperties}
           >
             <EditorContent editor={editor} />
-          </div>
           </div>
         </div>
       </div>
@@ -208,7 +179,7 @@ export function PagedEditor() {
             onClick={goToPreviousPage}
             disabled={currentPage <= 1}
             className="p-1.5 rounded-lg bg-card border border-border shadow-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Page précédente"
+            title="Page pr\u00e9c\u00e9dente"
           >
             <ChevronUp size={16} />
           </button>
@@ -265,7 +236,7 @@ export function PagedEditor() {
           onClick={zoomOut}
           disabled={zoomLevel <= 50}
           className="p-1.5 rounded-lg bg-card border border-border shadow-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          title="Zoom arrière"
+          title="Zoom arri\u00e8re"
         >
           <ZoomOut size={16} />
         </button>
@@ -284,7 +255,7 @@ export function PagedEditor() {
           <button
             onClick={resetZoom}
             className="text-xs font-medium text-muted-foreground hover:text-foreground min-w-[40px] text-center"
-            title="Réinitialiser le zoom"
+            title="R\u00e9initialiser le zoom"
           >
             {zoomLevel}%
           </button>

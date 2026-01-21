@@ -63,7 +63,7 @@ export function usePagination() {
             effectiveTypography: getEffectiveTypography()
           })
 
-          setPages(result.pages)
+          setPages(result.pages, result.pageBreaks)
 
           // Force editor to re-render decorations by dispatching a no-op transaction
           // This ensures PageBreakDecorations plugin updates with new positions

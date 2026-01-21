@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { PageBreak } from '@/lib/pagination'
 
 export interface PageInfo {
   pageNumber: number
@@ -17,11 +18,11 @@ interface PaginationState {
   isCalculating: boolean
   lastCalculatedAt: number
 
-  // Computed page break positions (ProseMirror positions)
-  pageBreakPositions: number[]
+  // Page breaks with pre-calculated spacer heights
+  pageBreaks: PageBreak[]
 
   // Actions
-  setPages: (pages: PageInfo[]) => void
+  setPages: (pages: PageInfo[], pageBreaks: PageBreak[]) => void
   setCurrentPage: (page: number) => void
   setIsCalculating: (calculating: boolean) => void
   scrollToPage: (page: number) => void
@@ -34,12 +35,12 @@ export const usePaginationStore = create<PaginationState>((set, get) => ({
   currentPage: 1,
   isCalculating: false,
   lastCalculatedAt: 0,
-  pageBreakPositions: [],
+  pageBreaks: [],
 
-  setPages: (pages) => set({
+  setPages: (pages, pageBreaks) => set({
     pages,
     totalPages: pages.length,
-    pageBreakPositions: pages.slice(1).map(p => p.startPos),
+    pageBreaks,
     lastCalculatedAt: Date.now()
   }),
 
@@ -62,6 +63,6 @@ export const usePaginationStore = create<PaginationState>((set, get) => ({
     totalPages: 1,
     currentPage: 1,
     isCalculating: false,
-    pageBreakPositions: []
+    pageBreaks: []
   })
 }))

@@ -14,17 +14,22 @@ import type { PageTemplate } from '@shared/types/templates'
 import type { PageInfo } from '@/stores/paginationStore'
 import type { EffectiveTypography } from '@/stores/editorStore'
 import { convertToPixels, parseFontSize, parseLineHeight } from './unitConversions'
-import { HEADER_HEIGHT, FOOTER_HEIGHT } from './constants'
+import { HEADER_HEIGHT, FOOTER_HEIGHT, PAGE_GAP } from './constants'
+
+export interface PageBreak {
+  position: number
+  spacerHeight: number  // Pre-calculated spacer height for this break
+}
 
 export interface PageBreakResult {
   pages: PageInfo[]
-  pageBreakPositions: number[]
+  pageBreaks: PageBreak[]
 }
 
 export interface CalculationContext {
   template: PageTemplate
   editor: Editor
-  measurementContainer: HTMLElement
+  measurementContainer?: HTMLElement // Deprecated: no longer used for direct measurement
   effectiveTypography?: EffectiveTypography // User typography overrides
 }
 
@@ -87,12 +92,15 @@ export function getPageDimensions(template: PageTemplate) {
 }
 
 /**
- * Measure the height of an element including its margins
- * getBoundingClientRect() does NOT include margins, so we need to compute them separately
+ * Measure a DOM node directly in the editor's layout
+ * This is more accurate than cloning because the node is already rendered
+ * with the correct width constraints and styling.
+ *
+ * getBoundingClientRect() does NOT include margins, so we compute them separately.
  */
-function measureNodeHeight(element: HTMLElement): number {
-  const rect = element.getBoundingClientRect()
-  const computed = window.getComputedStyle(element)
+function measureNodeInEditor(domNode: HTMLElement): number {
+  const rect = domNode.getBoundingClientRect()
+  const computed = window.getComputedStyle(domNode)
   const marginTop = parseFloat(computed.marginTop) || 0
   const marginBottom = parseFloat(computed.marginBottom) || 0
   return rect.height + marginTop + marginBottom
@@ -109,35 +117,14 @@ function measureNodeHeight(element: HTMLElement): number {
  * 5. Return array of page info with positions
  */
 export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
-  const { template, editor, measurementContainer, effectiveTypography } = ctx
+  const { template, editor, effectiveTypography } = ctx
   const dims = getPageDimensions(template)
 
   // Use effective typography if provided, otherwise fall back to template
   const typography = effectiveTypography || template.typography
 
-  // Configure measurement container to match page content area
-  // Add manuscript-content class so CSS rules from globals.css apply during measurement
-  // Also add pagination-measure class to disable :first-child rules during measurement
-  measurementContainer.className = 'manuscript-content pagination-measure'
-  measurementContainer.style.cssText = `
-    position: absolute;
-    left: -9999px;
-    top: 0;
-    visibility: hidden;
-    width: ${dims.contentWidth}px;
-    font-family: ${typography.fontFamily};
-    font-size: ${typography.fontSize};
-    line-height: ${typography.lineHeight};
-    text-align: justify;
-    hyphens: auto;
-    --first-line-indent: ${typography.firstLineIndent};
-  `
-  // Add a dummy element so cloned nodes are never :first-child
-  // This prevents :first-child CSS rules from applying during measurement
-  measurementContainer.innerHTML = '<div style="display:none"></div>'
-
   const pages: PageInfo[] = []
-  const pageBreakPositions: number[] = []
+  const pageBreaks: PageBreak[] = []
 
   let currentPage: PageInfo = {
     pageNumber: 1,
@@ -154,8 +141,24 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
   const lineHeight = parseLineHeight(typography.lineHeight, fontSize)
   const minLinesThreshold = lineHeight * 2.5 // At least ~2-3 lines
 
-  // Track if we're measuring the first node (for :first-child styling)
-  let isFirstNode = true
+  // Calculate inter-page space (used for spacer height calculation)
+  const headerHeight = template.header?.show ? HEADER_HEIGHT : 0
+  const footerHeight = template.footer?.show ? FOOTER_HEIGHT : 0
+  const interPageSpace = dims.marginBottom + footerHeight + PAGE_GAP + dims.marginTop + headerHeight
+
+  // NEW APPROACH: Measure nodes directly from the editor's DOM
+  // This is more accurate than cloning because the nodes are already
+  // rendered with correct width constraints and styling.
+  //
+  // The editor content width may differ from the target page width,
+  // so we need to scale the measurements accordingly.
+  const editorElement = editor.view.dom as HTMLElement
+  const editorRect = editorElement.getBoundingClientRect()
+  const editorContentWidth = editorRect.width
+
+  // Calculate scale factor if editor width differs from target page width
+  // This accounts for different zoom levels or responsive layouts
+  const widthRatio = dims.contentWidth / editorContentWidth
 
   // Iterate through top-level blocks in the document
   doc.forEach((node, offset) => {
@@ -166,35 +169,27 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
       // If no DOM node, estimate height based on node type
       const estimatedHeight = estimateNodeHeight(node, template)
       processNodeHeight(estimatedHeight, offset, node.nodeSize)
-      isFirstNode = false
       return
     }
 
-    // Clone the DOM node for measurement
-    const clone = domNode.cloneNode(true) as HTMLElement
+    // Measure the node directly in the editor's DOM
+    const rawHeight = measureNodeInEditor(domNode)
 
-    // Apply manuscript styling to the clone (use effective typography for indents)
-    applyManuscriptStyles(clone, typography)
-
-    // For the first node, we need to measure WITH :first-child styling
-    // because it will render as first-child in the actual editor
-    if (isFirstNode) {
-      // Clear container completely so clone becomes :first-child
-      measurementContainer.innerHTML = ''
+    // Scale the height if editor width differs from target width
+    // When text reflows to a narrower width, it gets taller proportionally
+    // When text reflows to a wider width, it gets shorter proportionally
+    let nodeHeight = rawHeight
+    if (widthRatio < 1) {
+      // Target is narrower than editor - content will be taller
+      // Use a heuristic: height scales inversely with width for text
+      nodeHeight = rawHeight / widthRatio
+    } else if (widthRatio > 1) {
+      // Target is wider than editor - content will be shorter
+      nodeHeight = rawHeight / widthRatio
     }
-
-    // Add to measurement container
-    measurementContainer.appendChild(clone)
-
-    // Measure the actual rendered height including margins
-    const nodeHeight = measureNodeHeight(clone)
 
     // Process this node's height
     processNodeHeight(nodeHeight, offset, node.nodeSize)
-
-    // Clear measurement container for next iteration (keep dummy element for non-first nodes)
-    measurementContainer.innerHTML = '<div style="display:none"></div>'
-    isFirstNode = false
   })
 
   // Helper function to process node height and create page breaks
@@ -202,17 +197,31 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
     const endOffset = startOffset + nodeSize
 
     // CRITICAL: Handle nodes taller than page height
-    // These nodes can't be split, so we force a page break before them
-    // and cap their height to prevent cascading misalignment
+    // These nodes can't be split at the ProseMirror level, so we:
+    // 1. Force a page break before the oversized node
+    // 2. Create multiple page entries (for correct page frame rendering)
+    // 3. Store actual height in the LAST page so spacer can compensate
     if (nodeHeight > dims.contentHeight) {
-      console.warn(`[Pagination] Node at offset ${startOffset} exceeds page height: ${Math.round(nodeHeight)}px > ${Math.round(dims.contentHeight)}px`)
+      console.log('[Pagination] OVERSIZED NODE:', {
+        offset: startOffset,
+        nodeHeight: Math.round(nodeHeight),
+        contentHeight: Math.round(dims.contentHeight),
+        currentHeight: Math.round(currentHeight)
+      })
 
       // Force page break if we're not at the start of a page
       if (currentHeight > 0) {
         currentPage.endPos = startOffset
         currentPage.contentHeight = currentHeight
         pages.push({ ...currentPage })
-        pageBreakPositions.push(startOffset)
+
+        // Calculate spacer height: remaining space on current page + inter-page space
+        const remainingOnPage = Math.max(0, dims.contentHeight - currentHeight)
+        pageBreaks.push({
+          position: startOffset,
+          spacerHeight: remainingOnPage + interPageSpace
+        })
+        console.log('[Pagination] Created page break before oversized node, page:', pages.length)
 
         currentPage = {
           pageNumber: pages.length + 1,
@@ -223,10 +232,44 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
         currentHeight = 0
       }
 
-      // Cap the node height to page height to prevent cascading errors
-      // The overflow will be visually clipped by PagedEditor's overflow:hidden
-      currentHeight = dims.contentHeight
+      // Calculate how many visual pages this oversized node spans
+      const pagesSpanned = Math.ceil(nodeHeight / dims.contentHeight)
+      console.log('[Pagination] Oversized node spans', pagesSpanned, 'pages')
+
+      // Create page entries for intermediate pages (full height, no page break after)
+      // These are "virtual" pages - they don't have decorations but create page frames
+      for (let i = 0; i < pagesSpanned - 1; i++) {
+        currentPage.endPos = endOffset
+        currentPage.contentHeight = dims.contentHeight
+        pages.push({ ...currentPage })
+        console.log('[Pagination] Created virtual page', pages.length)
+
+        currentPage = {
+          pageNumber: pages.length + 1,
+          startPos: startOffset, // Same start - it's the same oversized node
+          endPos: 0,
+          contentHeight: 0
+        }
+      }
+
+      // The last page of the oversized node gets the remaining height
+      const remainingHeight = nodeHeight - (pagesSpanned - 1) * dims.contentHeight
+      currentHeight = remainingHeight
       currentPage.endPos = endOffset
+
+      // CRITICAL: Add a compensating spacer AFTER the oversized node
+      // The oversized node traverses (pagesSpanned - 1) inter-page areas without spacers,
+      // so content after it would appear too high. We add a spacer to compensate.
+      if (pagesSpanned > 1) {
+        const compensatingSpace = (pagesSpanned - 1) * interPageSpace
+        pageBreaks.push({
+          position: endOffset,
+          spacerHeight: compensatingSpace
+        })
+        console.log('[Pagination] Added compensating spacer after oversized node:', Math.round(compensatingSpace))
+      }
+
+      console.log('[Pagination] Last page of oversized node, remainingHeight:', Math.round(remainingHeight))
       return
     }
 
@@ -245,7 +288,13 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
       currentPage.endPos = startOffset
       currentPage.contentHeight = currentHeight
       pages.push({ ...currentPage })
-      pageBreakPositions.push(startOffset)
+
+      // Calculate spacer height: remaining space on current page + inter-page space
+      const remainingOnPage = Math.max(0, dims.contentHeight - currentHeight)
+      pageBreaks.push({
+        position: startOffset,
+        spacerHeight: remainingOnPage + interPageSpace
+      })
 
       // Start new page
       currentPage = {
@@ -278,30 +327,14 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
     })
   }
 
-  return { pages, pageBreakPositions }
-}
-
-/**
- * Apply manuscript-specific styles to a cloned element
- * Note: We no longer zero out margins - the measurement container has the
- * manuscript-content class and CSS rules apply naturally. We use margin-aware
- * height measurement to account for margins correctly.
- */
-function applyManuscriptStyles(
-  element: HTMLElement,
-  typography: { firstLineIndent: string }
-) {
-  // Apply first-line indent to paragraphs
-  const paragraphs = element.querySelectorAll('p')
-  paragraphs.forEach((p) => {
-    // Skip first paragraph after headings (no indent)
-    const prev = p.previousElementSibling
-    if (!prev || prev.tagName.match(/^H[1-6]$/)) {
-      (p as HTMLElement).style.textIndent = '0'
-    } else {
-      (p as HTMLElement).style.textIndent = typography.firstLineIndent
-    }
+  console.log('[Pagination] FINAL RESULT:', {
+    totalPages: pages.length,
+    pageBreakCount: pageBreaks.length,
+    pages: pages.map(p => ({ num: p.pageNumber, height: Math.round(p.contentHeight) })),
+    breaks: pageBreaks.map(b => ({ pos: b.position, spacer: Math.round(b.spacerHeight) }))
   })
+
+  return { pages, pageBreaks }
 }
 
 /**

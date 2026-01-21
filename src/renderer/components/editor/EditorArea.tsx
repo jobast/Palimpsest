@@ -7,14 +7,15 @@ import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import Typography from '@tiptap/extension-typography'
 import Highlight from '@tiptap/extension-highlight'
+import { PaginationPlus } from 'tiptap-pagination-plus'
 import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useStatsStore } from '@/stores/statsStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
-import { usePagination } from '@/hooks/usePagination'
 import { useWritingTimer } from '@/hooks/useWritingTimer'
-import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, PageBreakDecorations, TextAnalysisDecorations } from './extensions'
+import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, TextAnalysisDecorations } from './extensions'
 import type { WordStatsData } from './extensions'
+import { templateToPaginationOptions } from '@/lib/pagination/paginationPlusAdapter'
 import { PagedEditor } from './PagedEditor'
 import { SheetEditor } from './SheetEditor'
 import type { ManuscriptItem } from '@shared/types/project'
@@ -45,12 +46,13 @@ export function EditorArea() {
   } = useEditorStore()
 
   const { recordActivity } = useStatsStore()
-
-  // Initialize pagination system
-  usePagination()
+  const { currentTemplate } = useEditorStore()
 
   // Initialize writing timer
   useWritingTimer()
+
+  // Get pagination options from current template
+  const paginationOptions = templateToPaginationOptions(currentTemplate)
 
   // Word stats callback
   const handleWordStatsUpdate = useCallback((stats: WordStatsData) => {
@@ -100,7 +102,7 @@ export function EditorArea() {
       SceneBreak,
       ChapterTitle,
       FirstParagraph,
-      PageBreakDecorations,
+      PaginationPlus.configure(paginationOptions),
       TextAnalysisDecorations
     ],
     content: '',
@@ -161,6 +163,32 @@ export function EditorArea() {
     const wordCount = editor.storage.characterCount?.words() ?? 0
     startEditorSession(wordCount)
   }, [editor, activeDocumentId, project, getDocumentContent, startEditorSession])
+
+  // Update pagination settings when template changes
+  useEffect(() => {
+    if (!editor) return
+
+    const options = templateToPaginationOptions(currentTemplate)
+
+    // Use PaginationPlus commands to update settings
+    editor.chain()
+      .updatePageHeight(options.pageHeight!)
+      .updatePageWidth(options.pageWidth!)
+      .updatePageGap(options.pageGap!)
+      .updateMargins({
+        top: options.marginTop!,
+        bottom: options.marginBottom!,
+        left: options.marginLeft!,
+        right: options.marginRight!
+      })
+      .updateContentMargins({
+        top: options.contentMarginTop!,
+        bottom: options.contentMarginBottom!
+      })
+      .updateHeaderContent(options.headerLeft || '', options.headerRight || '')
+      .updateFooterContent(options.footerLeft || '', options.footerRight || '')
+      .run()
+  }, [editor, currentTemplate])
 
   // Subscribe to analysis store changes to refresh decorations
   const analysisUpdateCounter = useRef(0)

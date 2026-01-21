@@ -2,8 +2,6 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { usePaginationStore } from '@/stores/paginationStore'
-import { useEditorStore } from '@/stores/editorStore'
-import { getPageDimensions, PAGE_GAP, HEADER_HEIGHT, FOOTER_HEIGHT } from '@/lib/pagination'
 
 export interface PageBreakDecorationsOptions {
   enabled: boolean
@@ -20,6 +18,9 @@ const pageBreakPluginKey = new PluginKey('pageBreakDecorations')
  * The page frames (with headers/footers) are rendered as overlays.
  * This extension adds the vertical space needed for content to align
  * with the content areas of each page frame.
+ *
+ * Spacer heights are pre-calculated in pageBreakCalculator.ts to ensure
+ * correct alignment even with oversized nodes that span multiple pages.
  */
 export const PageBreakDecorations = Extension.create<PageBreakDecorationsOptions>({
   name: 'pageBreakDecorations',
@@ -37,55 +38,33 @@ export const PageBreakDecorations = Extension.create<PageBreakDecorationsOptions
 
         props: {
           decorations(state) {
-            // Read current state from stores
-            const { pageBreakPositions, pages, isCalculating } = usePaginationStore.getState()
-            const { currentTemplate } = useEditorStore.getState()
+            // Read current state from store
+            const { pageBreaks, isCalculating } = usePaginationStore.getState()
 
             // Don't render decorations while recalculating (prevents glitches during template changes)
             if (isCalculating) {
               return DecorationSet.empty
             }
 
-            if (!pageBreakPositions || pageBreakPositions.length === 0) {
+            if (!pageBreaks || pageBreaks.length === 0) {
               return DecorationSet.empty
             }
-
-            // Get dimensions from current template
-            const dims = getPageDimensions(currentTemplate)
-            const headerHeight = currentTemplate.header?.show ? HEADER_HEIGHT : 0
-            const footerHeight = currentTemplate.footer?.show ? FOOTER_HEIGHT : 0
 
             const decorations: Decoration[] = []
             const doc = state.doc
 
-            // Space between page content areas:
-            // - Bottom margin + footer of current page
-            // - Gap between pages
-            // - Top margin + header of next page
-            const interPageSpace =
-              dims.marginBottom + footerHeight +
-              PAGE_GAP +
-              dims.marginTop + headerHeight
+            pageBreaks.forEach((pageBreak, index) => {
+              const { position, spacerHeight } = pageBreak
 
-            pageBreakPositions.forEach((pos, index) => {
               // Ensure position is valid and within document bounds
-              if (pos <= 0 || pos >= doc.content.size) return
+              if (position <= 0 || position >= doc.content.size) return
 
-              // Calculate remaining whitespace on the ending page
-              const endingPage = pages[index]
-              const pageContentHeight = endingPage?.contentHeight || 0
-              const maxContentHeight = dims.contentHeight
-              const remainingSpace = Math.max(0, maxContentHeight - pageContentHeight)
-
-              // Total vertical space to add
-              const totalSpace = remainingSpace + interPageSpace
-
-              const widget = Decoration.widget(pos, () => {
+              const widget = Decoration.widget(position, () => {
                 const spacer = document.createElement('div')
                 spacer.className = 'page-break-spacer'
                 spacer.setAttribute('contenteditable', 'false')
                 spacer.style.cssText = `
-                  height: ${totalSpace}px;
+                  height: ${spacerHeight}px;
                   width: 100%;
                   user-select: none;
                   pointer-events: none;
