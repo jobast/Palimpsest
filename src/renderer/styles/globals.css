@@ -672,50 +672,52 @@
   background-color: hsl(var(--muted));
 }
 
-/* Page container created by the extension */
-.pagination-plus-container .tiptap-pagination-plus-page {
+/* The editor with pagination - this is the "page" */
+.ProseMirror.rm-with-pagination {
   background-color: hsl(var(--paper));
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.1);
-  border-radius: 3px;
-  margin-bottom: 0;
+  color: hsl(var(--paper-foreground));
 }
 
 /* Page break gap between pages */
-.pagination-plus-container .tiptap-pagination-plus-page-break {
-  background-color: hsl(var(--muted));
+.rm-pagination-gap {
+  background-color: hsl(var(--muted)) !important;
 }
 
 /* Header styling */
-.pagination-plus-container .tiptap-pagination-plus-header {
+.rm-page-header {
   color: hsl(var(--muted-foreground));
   font-size: 10pt;
-  border-bottom: 1px solid hsl(var(--border) / 0.2);
+  background-color: hsl(var(--paper));
 }
 
-.pagination-plus-container .tiptap-pagination-plus-header-left,
-.pagination-plus-container .tiptap-pagination-plus-header-right {
+.rm-page-header-left,
+.rm-page-header-right {
   color: hsl(var(--muted-foreground));
 }
 
 /* Footer styling */
-.pagination-plus-container .tiptap-pagination-plus-footer {
+.rm-page-footer {
   color: hsl(var(--muted-foreground));
   font-size: 10pt;
-  border-top: 1px solid hsl(var(--border) / 0.2);
+  background-color: hsl(var(--paper));
 }
 
-.pagination-plus-container .tiptap-pagination-plus-footer-left,
-.pagination-plus-container .tiptap-pagination-plus-footer-right {
+.rm-page-footer-left,
+.rm-page-footer-right {
   color: hsl(var(--muted-foreground));
 }
 
-/* Page content area */
-.pagination-plus-container .tiptap-pagination-plus-content {
-  color: hsl(var(--paper-foreground));
+/* First page header */
+.rm-first-page-header {
+  background-color: hsl(var(--paper));
 }
 
-/* Ensure the editor content maintains our manuscript styles */
-.pagination-plus-container .ProseMirror {
-  outline: none;
-  color: hsl(var(--paper-foreground));
+/* Page break sections need paper background */
+.rm-page-break .page {
+  background-color: hsl(var(--paper));
+}
+
+.rm-page-break .breaker {
+  background-color: hsl(var(--paper));
 }
