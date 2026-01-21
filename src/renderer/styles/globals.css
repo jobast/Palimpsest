@@ -679,9 +679,22 @@
   color: hsl(var(--paper-foreground));
 }
 
-/* Page break gap between pages */
-.rm-pagination-gap {
+/* Page break gap between pages - must match editor background */
+.rm-pagination-gap,
+div.rm-pagination-gap,
+.ProseMirror .rm-pagination-gap {
   background-color: hsl(var(--muted)) !important;
+  background: hsl(var(--muted)) !important;
+  border: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-left-width: 0 !important;
+  border-right-width: 0 !important;
+  border-left-style: none !important;
+  border-right-style: none !important;
+  box-shadow: none !important;
+  width: 100% !important;
+  left: 0 !important;
 }
 
 /* Header styling */
