@@ -24,6 +24,7 @@ interface PaginationState {
   // Actions
   setPages: (pages: PageInfo[], pageBreaks: PageBreak[]) => void
   setCurrentPage: (page: number) => void
+  setTotalPages: (count: number) => void
   setIsCalculating: (calculating: boolean) => void
   scrollToPage: (page: number) => void
   reset: () => void
@@ -48,6 +49,8 @@ export const usePaginationStore = create<PaginationState>((set, get) => ({
     const { totalPages } = get()
     set({ currentPage: Math.min(Math.max(1, page), totalPages) })
   },
+
+  setTotalPages: (count) => set({ totalPages: Math.max(1, count) }),
 
   setIsCalculating: (calculating) => set({ isCalculating: calculating }),
 

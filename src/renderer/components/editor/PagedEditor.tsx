@@ -5,6 +5,7 @@ import { usePaginationStore } from '@/stores/paginationStore'
 import { useUIStore } from '@/stores/uiStore'
 import { ChevronUp, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react'
 import { ViewModeToggle } from './ViewModeToggle'
+import { PAGE_GAP } from '@/lib/pagination/constants'
 
 /**
  * PagedEditor Component
@@ -20,12 +21,14 @@ import { ViewModeToggle } from './ViewModeToggle'
 export function PagedEditor() {
   const { editor, getEffectiveTypography } = useEditorStore()
   const effectiveTypography = getEffectiveTypography()
-  const { setPages, setCurrentPage: setStorePage } = usePaginationStore()
+  const { currentPage, totalPages, setPages, setCurrentPage, setTotalPages } = usePaginationStore()
   const { zoomLevel, setZoomLevel, zoomIn, zoomOut, resetZoom } = useUIStore()
   const containerRef = useRef<HTMLDivElement>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
   const [showPageNav, setShowPageNav] = useState(false)
+
+  // Track programmatic scrolling to prevent handleScroll from overwriting page number
+  const isScrollingProgrammatically = useRef(false)
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Zoom scale factor
   const scale = zoomLevel / 100
@@ -43,7 +46,7 @@ export function PagedEditor() {
         const count = Math.max(1, pageBreaks.length)
         setTotalPages(count)
 
-        // Sync with pagination store for other components
+        // Sync page info for other components
         const pages = Array.from({ length: count }, (_, i) => ({
           pageNumber: i + 1,
           startPos: 0,
@@ -64,57 +67,105 @@ export function PagedEditor() {
       editor.off('update', updatePageCount)
       clearTimeout(initialTimer)
     }
-  }, [editor, setPages])
+  }, [editor, setPages, setTotalPages])
 
   // Handle scroll to update current page indicator
+  // Uses getBoundingClientRect for visual coordinates (works correctly with CSS transform)
   const handleScroll = useCallback(() => {
-    if (!containerRef.current || !editor) return
-
-    const editorElement = editor.view.dom as HTMLElement
-    const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
-    if (pageBreaks.length === 0) return
-
-    const containerRect = containerRef.current.getBoundingClientRect()
-    const containerTop = containerRect.top
-
-    // Find which page is most visible (closest to top of viewport)
-    let page = 1
-    let minDistance = Infinity
-
-    pageBreaks.forEach((pageEl, index) => {
-      const pageRect = pageEl.getBoundingClientRect()
-      // Distance from page top to container top (accounting for padding)
-      const distance = Math.abs(pageRect.top - containerTop - 40)
-      if (distance < minDistance) {
-        minDistance = distance
-        page = index + 1
-      }
-    })
-
-    const newPage = Math.min(Math.max(1, page), Math.max(1, totalPages))
-    setCurrentPage(newPage)
-    setStorePage(newPage)
-  }, [editor, totalPages, setStorePage])
-
-  // Scroll to a specific page
-  const scrollToPage = useCallback((pageNum: number) => {
+    // Skip updates during programmatic scrolling to prevent race conditions
+    if (isScrollingProgrammatically.current) return
     if (!containerRef.current || !editor) return
 
     const editorElement = editor.view.dom as HTMLElement
     const pageBreaks = Array.from(editorElement.querySelectorAll('.rm-page-break'))
-    const pageIndex = pageNum - 1 // Page 1 = index 0, Page 2 = index 1, etc.
 
-    if (pageIndex >= 0 && pageIndex < pageBreaks.length) {
-      const targetPage = pageBreaks[pageIndex] as HTMLElement
-      const containerRect = containerRef.current.getBoundingClientRect()
-      const pageRect = targetPage.getBoundingClientRect()
-
-      // Calculate scroll position: current scroll + page offset from container top
-      const scrollTop = containerRef.current.scrollTop + (pageRect.top - containerRect.top) - 40
-      containerRef.current.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' })
+    if (pageBreaks.length === 0) {
+      if (currentPage !== 1) setCurrentPage(1)
+      return
     }
+
+    const containerRect = containerRef.current.getBoundingClientRect()
+    // The visual threshold line: top of container + padding + small margin for better detection
+    const detectionMargin = 20 // Small margin to trigger page change slightly earlier
+    const viewportTop = containerRect.top + PAGE_GAP + detectionMargin
+
+    // Find which page we're viewing based on breaker positions
+    let detectedPage = 1
+
+    for (let i = 0; i < pageBreaks.length; i++) {
+      const breaker = pageBreaks[i].querySelector('.breaker') as HTMLElement
+      if (breaker) {
+        const breakerRect = breaker.getBoundingClientRect()
+        // If breaker bottom is above the viewport threshold, we've passed into the next page
+        if (breakerRect.bottom < viewportTop) {
+          detectedPage = i + 2 // breaker[0] → page 2, breaker[1] → page 3, etc.
+        } else {
+          break
+        }
+      }
+    }
+
+    const newPage = Math.min(detectedPage, totalPages)
+    if (newPage !== currentPage) {
+      setCurrentPage(newPage)
+    }
+  }, [editor, totalPages, currentPage, setCurrentPage])
+
+  // Scroll to a specific page
+  // Uses getBoundingClientRect for visual coordinates and computes scroll delta
+  const scrollToPage = useCallback((pageNum: number) => {
+    // Update current page IMMEDIATELY (don't wait for scroll to complete)
+    setCurrentPage(pageNum)
     setShowPageNav(false)
-  }, [editor])
+
+    if (!containerRef.current || !editor) return
+
+    // Prevent handleScroll from overwriting page number during animation
+    isScrollingProgrammatically.current = true
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current)
+    }
+    // Re-enable after smooth scroll completes (approximate duration)
+    scrollTimeoutRef.current = setTimeout(() => {
+      isScrollingProgrammatically.current = false
+    }, 500)
+
+    // Page 1 = scroll to top
+    if (pageNum === 1) {
+      containerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    const editorElement = editor.view.dom as HTMLElement
+    // .rm-page-break contains .page (marker) and .breaker (gap)
+    // The actual page content starts AFTER the breaker
+    const pageBreaks = Array.from(editorElement.querySelectorAll('.rm-page-break'))
+    const breakIndex = pageNum - 2 // Page 2 → break[0], Page 3 → break[1]
+
+    if (breakIndex >= 0 && breakIndex < pageBreaks.length) {
+      const breaker = pageBreaks[breakIndex].querySelector('.breaker') as HTMLElement
+
+      if (breaker) {
+        const containerRect = containerRef.current.getBoundingClientRect()
+        const breakerRect = breaker.getBoundingClientRect()
+
+        // Current visual position of breaker bottom relative to container top
+        const currentVisualPosition = breakerRect.bottom - containerRect.top
+        // Target: we want breaker bottom at the padding line with slight adjustment for centering
+        const scrollOffset = -15 // Negative = scroll slightly lower (page more centered)
+        const targetVisualPosition = PAGE_GAP - scrollOffset
+        // Scroll delta needed to move breaker to target position
+        const scrollDelta = currentVisualPosition - targetVisualPosition
+        // New absolute scroll position
+        const targetScrollTop = containerRef.current.scrollTop + scrollDelta
+
+        containerRef.current.scrollTo({
+          top: Math.max(0, targetScrollTop),
+          behavior: 'smooth'
+        })
+      }
+    }
+  }, [editor, setCurrentPage])
 
   const goToPreviousPage = useCallback(() => {
     if (currentPage > 1) scrollToPage(currentPage - 1)
@@ -138,6 +189,15 @@ export function PagedEditor() {
     return () => window.removeEventListener('palimpseste:scrollToPage', handler)
   }, [scrollToPage])
 
+  // Cleanup scroll timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+    }
+  }, [])
+
   if (!editor) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -153,7 +213,7 @@ export function PagedEditor() {
         ref={containerRef}
         className="flex-1 overflow-auto bg-muted"
         onScroll={handleScroll}
-        style={{ paddingTop: 40, paddingBottom: 40 }}
+        style={{ paddingTop: PAGE_GAP, paddingBottom: PAGE_GAP }}
       >
         {/* Zoom wrapper - centers and scales the editor */}
         <div
