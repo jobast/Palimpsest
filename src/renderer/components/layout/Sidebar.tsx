@@ -3,6 +3,7 @@ import { useProjectStore } from '@/stores/projectStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { getPageDimensions } from '@/lib/pagination'
+import { parseFontSize, convertToPixels } from '@/lib/pagination/unitConversions'
 import {
   FileText,
   Users,
@@ -634,10 +635,13 @@ function SheetsPanel() {
  */
 function PageThumbnailsPanel() {
   const { pages, currentPage, totalPages } = usePaginationStore()
-  const { editor, currentTemplate } = useEditorStore()
+  const { editor, currentTemplate, getEffectiveTypography } = useEditorStore()
 
   // Get actual page dimensions from template (properly converted to pixels)
   const dims = getPageDimensions(currentTemplate)
+
+  // Get effective typography (template + user overrides)
+  const typography = getEffectiveTypography()
 
   // Calculate thumbnail dimensions maintaining correct aspect ratio
   const maxThumbnailWidth = 176 // Sidebar width minus padding
@@ -645,16 +649,34 @@ function PageThumbnailsPanel() {
   const thumbnailWidth = maxThumbnailWidth
   const thumbnailHeight = thumbnailWidth * aspectRatio
 
-  // Extract text content for a page range
-  const getPageText = (startPos: number, endPos: number): string => {
+  // Calculate content area dimensions
+  const contentAreaWidth = thumbnailWidth -
+    (dims.marginLeft / dims.width) * thumbnailWidth -
+    (dims.marginRight / dims.width) * thumbnailWidth
+
+  // Calculate scale factor: thumbnail content width / actual page content width
+  const scaleFactor = contentAreaWidth / dims.contentWidth
+
+  // Scale typography values
+  const scaledFontSize = parseFontSize(typography.fontSize) * scaleFactor
+  const scaledFirstLineIndent = convertToPixels(typography.firstLineIndent) * scaleFactor
+
+  // Extract text content for a specific page
+  const getPageText = (pageNumber: number): string => {
     if (!editor) return ''
     try {
-      const doc = editor.state.doc
-      // Ensure positions are within bounds
-      const safeStart = Math.max(0, startPos)
-      const safeEnd = Math.min(doc.content.size, endPos)
-      if (safeStart >= safeEnd) return ''
-      return doc.textBetween(safeStart, safeEnd, '\n', ' ')
+      // Get all text from the editor (excludes header/footer decorations)
+      const fullText = editor.state.doc.textContent
+
+      if (!fullText || totalPages <= 0) return ''
+
+      // Calculate start position based on page number
+      const estimatedCharsPerPage = Math.ceil(fullText.length / totalPages)
+      const startIndex = (pageNumber - 1) * estimatedCharsPerPage
+
+      // Return plenty of text to fill the thumbnail (overflow will be hidden)
+      // Use 5000 chars or remaining text, whichever is smaller
+      return fullText.slice(startIndex, startIndex + 5000).trim()
     } catch {
       return ''
     }
@@ -684,7 +706,7 @@ function PageThumbnailsPanel() {
 
       <div className="flex flex-col items-center gap-3">
         {pages.map((pageInfo) => {
-          const pageText = getPageText(pageInfo.startPos, pageInfo.endPos)
+          const pageText = getPageText(pageInfo.pageNumber)
 
           return (
             <button
@@ -705,24 +727,25 @@ function PageThumbnailsPanel() {
               <div
                 className="relative w-full h-full overflow-hidden"
               >
-                {/* Scaled text content - padding proportional to page margins */}
+                {/* Scaled text content - padding proportional to page margins + header/footer */}
                 <div
                   className="absolute text-paper-foreground overflow-hidden"
                   style={{
-                    top: `${(dims.marginTop / dims.height) * thumbnailHeight}px`,
+                    top: `${((dims.marginTop + dims.headerHeight) / dims.height) * thumbnailHeight}px`,
                     left: `${(dims.marginLeft / dims.width) * thumbnailWidth}px`,
                     right: `${(dims.marginRight / dims.width) * thumbnailWidth}px`,
-                    bottom: `${(dims.marginBottom / dims.height) * thumbnailHeight}px`,
-                    fontSize: '3.5px',
-                    lineHeight: 1.3,
-                    fontFamily: currentTemplate.typography.fontFamily,
+                    bottom: `${((dims.marginBottom + dims.footerHeight) / dims.height) * thumbnailHeight}px`,
+                    fontSize: `${Math.max(2, scaledFontSize)}px`,
+                    lineHeight: typography.lineHeight,
+                    fontFamily: typography.fontFamily,
                     textAlign: 'justify',
                     wordBreak: 'break-word',
                     hyphens: 'auto',
+                    textIndent: `${scaledFirstLineIndent}px`,
                   }}
                 >
                   {pageText || (
-                    <span className="text-muted-foreground/30 italic">Page vide</span>
+                    <span className="text-muted-foreground/30 italic" style={{ textIndent: 0 }}>Page vide</span>
                   )}
                 </div>
 
