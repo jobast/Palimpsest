@@ -54,16 +54,16 @@ export function Sidebar() {
           onClick={() => setSidebarPanel('project')}
         />
         <SidebarTab
-          icon={<LayoutGrid size={16} />}
-          label="Pages"
-          active={sidebarPanel === 'pages'}
-          onClick={() => setSidebarPanel('pages')}
-        />
-        <SidebarTab
           icon={<Users size={16} />}
           label="Fiches"
           active={sidebarPanel === 'sheets'}
           onClick={() => setSidebarPanel('sheets')}
+        />
+        <SidebarTab
+          icon={<LayoutGrid size={16} />}
+          label="Pages"
+          active={sidebarPanel === 'pages'}
+          onClick={() => setSidebarPanel('pages')}
         />
       </div>
 
