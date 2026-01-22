@@ -1,17 +1,29 @@
 import { useState } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { defaultTemplates } from '@shared/types/templates'
-import { FolderOpen, Plus, Folder } from 'lucide-react'
+import { FolderOpen, Plus, Folder, Clock, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
 
 export function WelcomeScreen() {
   const [showNewProject, setShowNewProject] = useState(false)
-  const { openProject } = useProjectStore()
+  const { openProject, recentProjects, openRecentProject } = useProjectStore()
 
   if (showNewProject) {
     return <NewProjectForm onCancel={() => setShowNewProject(false)} />
+  }
+
+  // Format date for display
+  const formatDate = (isoDate: string) => {
+    const date = new Date(isoDate)
+    const now = new Date()
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 0) return "Aujourd'hui"
+    if (diffDays === 1) return 'Hier'
+    if (diffDays < 7) return `Il y a ${diffDays} jours`
+    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
   }
 
   return (
@@ -39,11 +51,47 @@ export function WelcomeScreen() {
           />
         </div>
 
-        <div className="mt-16 text-center">
-          <p className="text-xs text-muted-foreground">
-            Projets récents apparaîtront ici
-          </p>
-        </div>
+        {/* Recent projects */}
+        {recentProjects.length > 0 && (
+          <div className="mt-12 w-full max-w-md">
+            <h2 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <Clock size={14} />
+              Projets récents
+            </h2>
+            <div className="space-y-2">
+              {recentProjects.map((project) => (
+                <button
+                  key={project.path}
+                  onClick={() => openRecentProject(project.path)}
+                  className="w-full text-left px-4 py-3 rounded-lg border border-border bg-card hover:bg-accent hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{project.name}</div>
+                      {project.author && (
+                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <User size={10} />
+                          {project.author}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground ml-4 flex-shrink-0">
+                      {formatDate(project.lastOpened)}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {recentProjects.length === 0 && (
+          <div className="mt-16 text-center">
+            <p className="text-xs text-muted-foreground">
+              Vos projets récents apparaîtront ici
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

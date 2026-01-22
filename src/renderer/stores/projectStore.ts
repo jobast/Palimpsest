@@ -1,17 +1,31 @@
 import { create } from 'zustand'
 import type { Project, ManuscriptItem, Sheet, UserTypographyOverrides } from '@shared/types/project'
 import { useEditorStore } from './editorStore'
+import { useStatsStore } from './statsStore'
 
 // Check if running in Electron
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
+
+// Recent project entry
+export interface RecentProject {
+  name: string
+  author: string
+  path: string
+  lastOpened: string // ISO date string
+}
+
+// Max number of recent projects to keep
+const MAX_RECENT_PROJECTS = 10
 
 interface ProjectState {
   project: Project | null
   projectPath: string | null
   isLoading: boolean
+  isSaving: boolean  // Prevent concurrent saves
   isDirty: boolean
   activeDocumentId: string | null
   activeSheetId: string | null  // Currently edited sheet (null = editing manuscript)
+  recentProjects: RecentProject[]
 
   // Actions
   setProject: (project: Project, path: string) => void
@@ -19,6 +33,9 @@ interface ProjectState {
   setActiveDocument: (id: string | null) => void
   setActiveSheet: (id: string | null) => void
   setDirty: (dirty: boolean) => void
+  addToRecentProjects: (project: RecentProject) => void
+  loadRecentProjects: () => void
+  openRecentProject: (path: string) => Promise<void>
 
   // Manuscript actions
   addManuscriptItem: (item: ManuscriptItem, parentId?: string) => void
@@ -83,13 +100,30 @@ const createEmptyProject = (name: string, author: string, template: string): Pro
   }
 })
 
+// Load recent projects from localStorage
+const loadRecentProjectsFromStorage = (): RecentProject[] => {
+  try {
+    const stored = localStorage.getItem('palimpseste_recentProjects')
+    return stored ? JSON.parse(stored) : []
+  } catch {
+    return []
+  }
+}
+
+// Save recent projects to localStorage
+const saveRecentProjectsToStorage = (projects: RecentProject[]) => {
+  localStorage.setItem('palimpseste_recentProjects', JSON.stringify(projects))
+}
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   project: null,
   projectPath: null,
   isLoading: false,
+  isSaving: false,
   isDirty: false,
   activeDocumentId: null,
   activeSheetId: null,
+  recentProjects: loadRecentProjectsFromStorage(),
 
   setProject: (project, path) => {
     set({ project, projectPath: path, isDirty: false, activeSheetId: null })
@@ -110,6 +144,117 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setActiveSheet: (id) => set({ activeSheetId: id }),
 
   setDirty: (dirty) => set({ isDirty: dirty }),
+
+  addToRecentProjects: (recentProject) => {
+    const { recentProjects } = get()
+    // Remove existing entry with same path
+    const filtered = recentProjects.filter(p => p.path !== recentProject.path)
+    // Add new entry at the beginning
+    const updated = [recentProject, ...filtered].slice(0, MAX_RECENT_PROJECTS)
+    set({ recentProjects: updated })
+    saveRecentProjectsToStorage(updated)
+  },
+
+  loadRecentProjects: () => {
+    const projects = loadRecentProjectsFromStorage()
+    set({ recentProjects: projects })
+  },
+
+  openRecentProject: async (projectPath: string) => {
+    if (!isElectron) return
+
+    const exists = await window.electronAPI.exists(projectPath)
+    if (!exists) {
+      // Remove from recent projects if it doesn't exist
+      const { recentProjects } = get()
+      const updated = recentProjects.filter(p => p.path !== projectPath)
+      set({ recentProjects: updated })
+      saveRecentProjectsToStorage(updated)
+      useStatsStore.getState().showNotification('error', 'Projet introuvable')
+      return
+    }
+
+    set({ isLoading: true })
+    try {
+      const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
+      const structureResult = await window.electronAPI.readFile(`${projectPath}/manuscript/structure.json`)
+      const sessionsResult = await window.electronAPI.readFile(`${projectPath}/stats/sessions.json`)
+      const goalsResult = await window.electronAPI.readFile(`${projectPath}/stats/goals.json`)
+
+      if (!metaResult.success || !structureResult.success) {
+        throw new Error('Failed to read project files')
+      }
+
+      const meta = JSON.parse(metaResult.content!)
+      const manuscript = JSON.parse(structureResult.content!)
+      const sessions = sessionsResult.success ? JSON.parse(sessionsResult.content!) : []
+      const goals = goalsResult.success ? JSON.parse(goalsResult.content!) : []
+
+      const project: Project = {
+        meta,
+        manuscript,
+        sheets: {
+          characters: [],
+          locations: [],
+          plots: [],
+          notes: []
+        },
+        stats: {
+          sessions,
+          dailyStats: [],
+          goals,
+          totalWords: 0,
+          streak: { current: 0, longest: 0, lastWritingDate: '' },
+          manuscriptMode: 'drafting'
+        }
+      }
+
+      // Load typography overrides into editor store
+      useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
+
+      // Load document contents from disk BEFORE setting activeDocumentId
+      const editorStore = useEditorStore.getState()
+      editorStore.clearDocumentContents()
+      const documentsDir = `${projectPath}/manuscript/documents`
+      const dirResult = await window.electronAPI.readDirectory(documentsDir)
+      if (dirResult.success && dirResult.files) {
+        const documentContents: Record<string, string> = {}
+        for (const file of dirResult.files) {
+          if (file.name.endsWith('.json') && !file.isDirectory) {
+            const documentId = file.name.replace('.json', '')
+            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
+            if (contentResult.success && contentResult.content) {
+              documentContents[documentId] = contentResult.content
+            }
+          }
+        }
+        editorStore.loadDocumentContents(documentContents)
+      }
+
+      // Now set state with activeDocumentId (after documents are loaded)
+      set({
+        project,
+        projectPath,
+        isLoading: false,
+        isDirty: false,
+        activeDocumentId: manuscript.items[0]?.id || null
+      })
+
+      // Update recent projects
+      get().addToRecentProjects({
+        name: meta.name,
+        author: meta.author || '',
+        path: projectPath,
+        lastOpened: new Date().toISOString()
+      })
+
+      useStatsStore.getState().showNotification('success', 'Projet ouvert')
+    } catch (error) {
+      console.error('Failed to open recent project:', error)
+      set({ isLoading: false })
+      useStatsStore.getState().showNotification('error', 'Erreur lors de l\'ouverture du projet')
+    }
+  },
 
   addManuscriptItem: (item, parentId) => {
     const { project } = get()
@@ -423,9 +568,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         activeDocumentId: project.manuscript.items[0]?.id || null
       })
       localStorage.setItem('lastProjectPath', projectPath)
+
+      // Clear any old document contents
+      useEditorStore.getState().clearDocumentContents()
+
+      // Add to recent projects
+      get().addToRecentProjects({
+        name: project.meta.name,
+        author: project.meta.author || '',
+        path: projectPath,
+        lastOpened: new Date().toISOString()
+      })
+
+      useStatsStore.getState().showNotification('success', 'Projet créé')
     } catch (error) {
       console.error('Failed to create project:', error)
       set({ isLoading: false })
+      useStatsStore.getState().showNotification('error', 'Erreur lors de la création du projet')
     }
   },
 
@@ -480,6 +639,29 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
       }
 
+      // Load typography overrides into editor store
+      useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
+
+      // Load document contents from disk BEFORE setting activeDocumentId
+      const editorStore = useEditorStore.getState()
+      editorStore.clearDocumentContents()
+      const documentsDir = `${projectPath}/manuscript/documents`
+      const dirResult = await window.electronAPI.readDirectory(documentsDir)
+      if (dirResult.success && dirResult.files) {
+        const documentContents: Record<string, string> = {}
+        for (const file of dirResult.files) {
+          if (file.name.endsWith('.json') && !file.isDirectory) {
+            const documentId = file.name.replace('.json', '')
+            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
+            if (contentResult.success && contentResult.content) {
+              documentContents[documentId] = contentResult.content
+            }
+          }
+        }
+        editorStore.loadDocumentContents(documentContents)
+      }
+
+      // Now set state with activeDocumentId (after documents are loaded)
       set({
         project,
         projectPath,
@@ -489,23 +671,38 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       })
       localStorage.setItem('lastProjectPath', projectPath)
 
-      // Load typography overrides into editor store
-      useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
+      // Add to recent projects
+      get().addToRecentProjects({
+        name: meta.name,
+        author: meta.author || '',
+        path: projectPath,
+        lastOpened: new Date().toISOString()
+      })
+
+      useStatsStore.getState().showNotification('success', 'Projet ouvert')
     } catch (error) {
       console.error('Failed to open project:', error)
       set({ isLoading: false })
+      useStatsStore.getState().showNotification('error', 'Erreur lors de l\'ouverture du projet')
     }
   },
 
   saveProject: async () => {
-    const { project, projectPath } = get()
+    const { project, projectPath, isSaving, activeDocumentId } = get()
     if (!project || !projectPath) return
+
+    // Prevent concurrent saves
+    if (isSaving) return
+
+    // Flush current document content to store before saving
+    // This ensures any pending debounced updates are captured
+    useEditorStore.getState().flushCurrentDocument(activeDocumentId)
 
     // Get current typography overrides from editor store
     const typographyOverrides = useEditorStore.getState().userTypographyOverrides
     const hasOverrides = Object.keys(typographyOverrides).length > 0
 
-    set({ isLoading: true })
+    set({ isLoading: true, isSaving: true })
     try {
       // Browser mode: save to localStorage
       if (!isElectron || projectPath.startsWith('browser://')) {
@@ -519,7 +716,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           }
         }
         localStorage.setItem(`palimpseste_project_${projectId}`, JSON.stringify(updatedProject))
-        set({ project: updatedProject, isLoading: false, isDirty: false })
+        set({ project: updatedProject, isLoading: false, isSaving: false, isDirty: false })
         return
       }
 
@@ -546,10 +743,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         JSON.stringify(project.stats.goals, null, 2)
       )
 
-      set({ isLoading: false, isDirty: false })
+      // Save document contents
+      const documentContents = useEditorStore.getState().getAllDocumentContents()
+      for (const [documentId, content] of documentContents) {
+        const result = await window.electronAPI.writeFile(
+          `${projectPath}/manuscript/documents/${documentId}.json`,
+          content
+        )
+        if (!result.success) {
+          console.error(`Failed to save document ${documentId}:`, result.error)
+        }
+      }
+
+      set({ isLoading: false, isSaving: false, isDirty: false })
+      useStatsStore.getState().showNotification('success', 'Projet sauvegardé')
     } catch (error) {
       console.error('Failed to save project:', error)
-      set({ isLoading: false })
+      set({ isLoading: false, isSaving: false })
+      useStatsStore.getState().showNotification('error', 'Erreur lors de la sauvegarde')
     }
   },
 
@@ -626,6 +837,29 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
       }
 
+      // Load typography overrides into editor store
+      useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
+
+      // Load document contents from disk BEFORE setting activeDocumentId
+      const editorStore = useEditorStore.getState()
+      editorStore.clearDocumentContents()
+      const documentsDir = `${lastPath}/manuscript/documents`
+      const dirResult = await window.electronAPI.readDirectory(documentsDir)
+      if (dirResult.success && dirResult.files) {
+        const documentContents: Record<string, string> = {}
+        for (const file of dirResult.files) {
+          if (file.name.endsWith('.json') && !file.isDirectory) {
+            const documentId = file.name.replace('.json', '')
+            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
+            if (contentResult.success && contentResult.content) {
+              documentContents[documentId] = contentResult.content
+            }
+          }
+        }
+        editorStore.loadDocumentContents(documentContents)
+      }
+
+      // Now set state with activeDocumentId (after documents are loaded)
       set({
         project,
         projectPath: lastPath,
@@ -633,12 +867,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isDirty: false,
         activeDocumentId: manuscript.items[0]?.id || null
       })
-
-      // Load typography overrides into editor store
-      useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
     } catch (error) {
       console.error('Failed to load last project:', error)
       set({ isLoading: false })
+      useStatsStore.getState().showNotification('error', 'Erreur lors du chargement du projet')
     }
   }
 }))

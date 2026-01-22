@@ -46,7 +46,7 @@ interface StatsState {
 
   // Notification triggers (not persisted)
   pendingNotifications: Array<{
-    type: 'daily_goal' | 'project_goal' | 'streak_milestone'
+    type: 'daily_goal' | 'project_goal' | 'streak_milestone' | 'info' | 'success' | 'error'
     message: string
   }>
 
@@ -76,6 +76,7 @@ interface StatsState {
   getProgress: (goalType: WritingGoal['type']) => { current: number; target: number; percentage: number }
 
   // Notifications
+  showNotification: (type: 'info' | 'success' | 'error', message: string) => void
   clearNotification: (index: number) => void
   clearAllNotifications: () => void
 
@@ -426,6 +427,13 @@ export const useStatsStore = create<StatsState>()(
           target: goal.target,
           percentage
         }
+      },
+
+      showNotification: (type, message) => {
+        const { pendingNotifications } = get()
+        set({
+          pendingNotifications: [...pendingNotifications, { type, message }]
+        })
       },
 
       clearNotification: (index) => {

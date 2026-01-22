@@ -10,7 +10,6 @@ import { SettingsModal } from './components/ui/SettingsModal'
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
 
 function App() {
-  const loadLastProject = useProjectStore(state => state.loadLastProject)
   const openProject = useProjectStore(state => state.openProject)
   const saveProject = useProjectStore(state => state.saveProject)
   const isDirty = useProjectStore(state => state.isDirty)
@@ -26,9 +25,26 @@ function App() {
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const autoSaveTimerRef = useRef<number | null>(null)
 
-  useEffect(() => {
-    loadLastProject()
-  }, [loadLastProject])
+  // Refs for menu action handlers to avoid re-registering listeners
+  const menuHandlersRef = useRef({
+    openProject,
+    saveProject,
+    toggleFocusMode,
+    exportDocx,
+    exportPdf,
+    setShowNewProjectDialog
+  })
+  // Keep refs updated
+  menuHandlersRef.current = {
+    openProject,
+    saveProject,
+    toggleFocusMode,
+    exportDocx,
+    exportPdf,
+    setShowNewProjectDialog
+  }
+
+  // Don't auto-load last project - let WelcomeScreen show recent projects instead
 
   // Apply theme and paper color on initial load
   useEffect(() => {
@@ -63,30 +79,31 @@ function App() {
     }
   }, [autoSaveEnabled, autoSaveInterval, project, isDirty, saveProject])
 
-  // Menu action handler
+  // Menu action handler - uses refs to avoid re-registering listeners
   const handleMenuAction = useCallback((action: string) => {
     console.log('Menu action received:', action)
+    const handlers = menuHandlersRef.current
     switch (action) {
       case 'new-project':
-        setShowNewProjectDialog(true)
+        handlers.setShowNewProjectDialog(true)
         break
       case 'open-project':
-        openProject()
+        handlers.openProject()
         break
       case 'save-project':
-        saveProject()
+        handlers.saveProject()
         break
       case 'toggle-focus-mode':
-        toggleFocusMode()
+        handlers.toggleFocusMode()
         break
       case 'export-docx':
-        exportDocx()
+        handlers.exportDocx()
         break
       case 'export-pdf':
-        exportPdf()
+        handlers.exportPdf()
         break
     }
-  }, [openProject, saveProject, toggleFocusMode, exportDocx, exportPdf])
+  }, []) // Empty deps - handlers accessed via ref
 
   // Listen for menu actions from Electron
   useEffect(() => {

@@ -2,6 +2,13 @@ import { Menu, BrowserWindow, app, shell } from 'electron'
 
 const isMac = process.platform === 'darwin'
 
+// Helper to safely send IPC messages to the window
+function sendToWindow(mainWindow: BrowserWindow, channel: string) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel)
+  }
+}
+
 export function createApplicationMenu(mainWindow: BrowserWindow) {
   const template: Electron.MenuItemConstructorOptions[] = [
     // App menu (macOS only)
@@ -29,7 +36,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           accelerator: 'CmdOrCtrl+N',
           click: () => {
             console.log('Menu: new-project clicked')
-            mainWindow.webContents.send('menu:new-project')
+            sendToWindow(mainWindow, 'menu:new-project')
           }
         },
         {
@@ -37,7 +44,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           accelerator: 'CmdOrCtrl+O',
           click: () => {
             console.log('Menu: open-project clicked')
-            mainWindow.webContents.send('menu:open-project')
+            sendToWindow(mainWindow, 'menu:open-project')
           }
         },
         { type: 'separator' },
@@ -46,7 +53,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           accelerator: 'CmdOrCtrl+S',
           click: () => {
             console.log('Menu: save-project clicked')
-            mainWindow.webContents.send('menu:save-project')
+            sendToWindow(mainWindow, 'menu:save-project')
           }
         },
         { type: 'separator' },
@@ -58,7 +65,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
               accelerator: 'CmdOrCtrl+Shift+E',
               click: () => {
                 console.log('Menu: export-docx clicked')
-                mainWindow.webContents.send('menu:export-docx')
+                sendToWindow(mainWindow, 'menu:export-docx')
               }
             },
             {
@@ -66,7 +73,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
               accelerator: 'CmdOrCtrl+Shift+P',
               click: () => {
                 console.log('Menu: export-pdf clicked')
-                mainWindow.webContents.send('menu:export-pdf')
+                sendToWindow(mainWindow, 'menu:export-pdf')
               }
             }
           ]
@@ -113,7 +120,7 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           accelerator: 'CmdOrCtrl+Shift+F',
           click: () => {
             console.log('Menu: toggle-focus-mode clicked')
-            mainWindow.webContents.send('menu:toggle-focus-mode')
+            sendToWindow(mainWindow, 'menu:toggle-focus-mode')
           }
         },
         { role: 'togglefullscreen' as const, label: 'Plein ecran' },

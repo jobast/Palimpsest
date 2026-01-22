@@ -36,7 +36,7 @@ function findManuscriptItem(items: ManuscriptItem[], id: string): ManuscriptItem
  * Editor Area - Main container for the paginated editor
  */
 export function EditorArea() {
-  const { activeDocumentId, activeSheetId, project } = useProjectStore()
+  const { activeDocumentId, activeSheetId, project, setDirty } = useProjectStore()
   const {
     setEditor,
     getDocumentContent,
@@ -50,6 +50,11 @@ export function EditorArea() {
 
   // Initialize writing timer
   useWritingTimer()
+
+  // Debounce ref for document content saving
+  const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activeDocumentIdRef = useRef<string | null>(null)
+  activeDocumentIdRef.current = activeDocumentId
 
   // Get pagination options from current template
   const paginationOptions = templateToPaginationOptions(currentTemplate)
@@ -113,9 +118,17 @@ export function EditorArea() {
       }
     },
     onUpdate: ({ editor }) => {
-      if (activeDocumentId) {
-        setDocumentContent(activeDocumentId, JSON.stringify(editor.getJSON()))
+      // Debounce document content saving to avoid excessive updates
+      if (saveDebounceRef.current) {
+        clearTimeout(saveDebounceRef.current)
       }
+      saveDebounceRef.current = setTimeout(() => {
+        const docId = activeDocumentIdRef.current
+        if (docId) {
+          setDocumentContent(docId, JSON.stringify(editor.getJSON()))
+          setDirty(true) // Mark project as dirty for auto-save
+        }
+      }, 300) // 300ms debounce
     }
   })
 

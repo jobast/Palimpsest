@@ -46,6 +46,10 @@ interface EditorState {
   // Document content
   getDocumentContent: (documentId: string) => string | undefined
   setDocumentContent: (documentId: string, content: string) => void
+  getAllDocumentContents: () => Map<string, string>
+  loadDocumentContents: (contents: Record<string, string>) => void
+  clearDocumentContents: () => void
+  flushCurrentDocument: (activeDocumentId: string | null) => void  // Force save current editor content to store
 
   // Word tracking
   startSession: (initialWords: number) => void
@@ -116,6 +120,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const { documentContents } = get()
     const newContents = new Map(documentContents)
     newContents.set(documentId, content)
+    set({ documentContents: newContents })
+  },
+
+  getAllDocumentContents: () => {
+    return get().documentContents
+  },
+
+  loadDocumentContents: (contents) => {
+    const newContents = new Map<string, string>()
+    for (const [id, content] of Object.entries(contents)) {
+      newContents.set(id, content)
+    }
+    set({ documentContents: newContents })
+  },
+
+  clearDocumentContents: () => {
+    set({ documentContents: new Map() })
+  },
+
+  flushCurrentDocument: (activeDocumentId) => {
+    const { editor, documentContents } = get()
+    if (!editor || !activeDocumentId) return
+
+    // Save current editor content to store immediately
+    const content = JSON.stringify(editor.getJSON())
+    const newContents = new Map(documentContents)
+    newContents.set(activeDocumentId, content)
     set({ documentContents: newContents })
   },
 
