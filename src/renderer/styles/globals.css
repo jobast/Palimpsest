@@ -186,15 +186,22 @@
   margin-right: 2em;
 }
 
-.ProseMirror ul,
+.ProseMirror ul {
+  @apply pl-6 my-2;
+  text-indent: 0;
+  list-style-type: disc;
+}
+
 .ProseMirror ol {
   @apply pl-6 my-2;
   text-indent: 0;
+  list-style-type: decimal;
 }
 
 .ProseMirror li {
   @apply my-1;
   text-indent: 0;
+  display: list-item;
 }
 
 /* Horizontal rule - scene separator */
@@ -408,15 +415,22 @@
 }
 
 /* Lists - match .ProseMirror ul/ol */
-.manuscript-content ul,
+.manuscript-content ul {
+  @apply pl-6 my-2;
+  text-indent: 0;
+  list-style-type: disc;
+}
+
 .manuscript-content ol {
   @apply pl-6 my-2;
   text-indent: 0;
+  list-style-type: decimal;
 }
 
 .manuscript-content li {
   @apply my-1;
   text-indent: 0;
+  display: list-item;
 }
 
 /* Horizontal rule - match .ProseMirror hr */
