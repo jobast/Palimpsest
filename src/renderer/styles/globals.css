@@ -678,6 +678,7 @@
   box-shadow: none;
   border-left: 1px solid rgba(0,0,0,0.10) !important;
   border-right: 1px solid rgba(0,0,0,0.10) !important;
+  border-bottom: 1px solid rgba(0,0,0,0.10) !important;
   color: hsl(var(--paper-foreground));
 }
 

@@ -35,31 +35,34 @@ export function PagedEditor() {
     if (!editor) return
 
     const updatePageCount = () => {
-      // tiptap-pagination-plus stores page info in the DOM
-      // Count page break elements to determine total pages
-      const editorElement = editor.view.dom as HTMLElement
-      const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
-      const count = Math.max(1, pageBreaks.length + 1)
-      setTotalPages(count)
+      // tiptap-pagination-plus creates a .rm-page-break element for EACH page
+      // So total pages = number of .rm-page-break elements
+      requestAnimationFrame(() => {
+        const editorElement = editor.view.dom as HTMLElement
+        const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
+        const count = Math.max(1, pageBreaks.length)
+        setTotalPages(count)
 
-      // Sync with pagination store for other components
-      const pages = Array.from({ length: count }, (_, i) => ({
-        pageNumber: i + 1,
-        startPos: 0,
-        endPos: 0,
-        contentHeight: 0
-      }))
-      setPages(pages, [])
+        // Sync with pagination store for other components
+        const pages = Array.from({ length: count }, (_, i) => ({
+          pageNumber: i + 1,
+          startPos: 0,
+          endPos: 0,
+          contentHeight: 0
+        }))
+        setPages(pages, [])
+      })
     }
 
     // Update on content changes
     editor.on('update', updatePageCount)
 
-    // Initial calculation
-    updatePageCount()
+    // Initial calculation - delay to let tiptap-pagination-plus render
+    const initialTimer = setTimeout(updatePageCount, 100)
 
     return () => {
       editor.off('update', updatePageCount)
+      clearTimeout(initialTimer)
     }
   }, [editor, setPages])
 
@@ -67,24 +70,30 @@ export function PagedEditor() {
   const handleScroll = useCallback(() => {
     if (!containerRef.current || !editor) return
 
-    // Find page breaks and determine which page we're on
     const editorElement = editor.view.dom as HTMLElement
     const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
-    const containerScroll = containerRef.current.scrollTop
-    const containerRect = containerRef.current.getBoundingClientRect()
+    if (pageBreaks.length === 0) return
 
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const containerTop = containerRect.top
+
+    // Find which page is most visible (closest to top of viewport)
     let page = 1
-    pageBreaks.forEach((breakEl, index) => {
-      const breakRect = breakEl.getBoundingClientRect()
-      const breakTop = breakRect.top - containerRect.top + containerScroll
-      if (containerScroll >= breakTop - 100) {
-        page = index + 2
+    let minDistance = Infinity
+
+    pageBreaks.forEach((pageEl, index) => {
+      const pageRect = pageEl.getBoundingClientRect()
+      // Distance from page top to container top (accounting for padding)
+      const distance = Math.abs(pageRect.top - containerTop - 40)
+      if (distance < minDistance) {
+        minDistance = distance
+        page = index + 1
       }
     })
 
     const newPage = Math.min(Math.max(1, page), Math.max(1, totalPages))
     setCurrentPage(newPage)
-    setStorePage(newPage) // Sync with store
+    setStorePage(newPage)
   }, [editor, totalPages, setStorePage])
 
   // Scroll to a specific page
@@ -92,18 +101,17 @@ export function PagedEditor() {
     if (!containerRef.current || !editor) return
 
     const editorElement = editor.view.dom as HTMLElement
-    const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
+    const pageBreaks = Array.from(editorElement.querySelectorAll('.rm-page-break'))
+    const pageIndex = pageNum - 1 // Page 1 = index 0, Page 2 = index 1, etc.
 
-    if (pageNum === 1) {
-      containerRef.current.scrollTo({ top: 0, behavior: 'smooth' })
-    } else {
-      const targetBreak = pageBreaks[pageNum - 2] // -2 because first page has no break before it
-      if (targetBreak) {
-        const breakRect = targetBreak.getBoundingClientRect()
-        const containerRect = containerRef.current.getBoundingClientRect()
-        const scrollTop = containerRef.current.scrollTop + (breakRect.top - containerRect.top) - 40
-        containerRef.current.scrollTo({ top: scrollTop, behavior: 'smooth' })
-      }
+    if (pageIndex >= 0 && pageIndex < pageBreaks.length) {
+      const targetPage = pageBreaks[pageIndex] as HTMLElement
+      const containerRect = containerRef.current.getBoundingClientRect()
+      const pageRect = targetPage.getBoundingClientRect()
+
+      // Calculate scroll position: current scroll + page offset from container top
+      const scrollTop = containerRef.current.scrollTop + (pageRect.top - containerRect.top) - 40
+      containerRef.current.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' })
     }
     setShowPageNav(false)
   }, [editor])
