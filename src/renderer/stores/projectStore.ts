@@ -110,6 +110,46 @@ const loadRecentProjectsFromStorage = (): RecentProject[] => {
   }
 }
 
+// Load sheets from disk
+const loadSheetsFromDisk = async (projectPath: string): Promise<Project['sheets']> => {
+  const sheets: Project['sheets'] = {
+    characters: [],
+    locations: [],
+    plots: [],
+    notes: []
+  }
+
+  try {
+    const charactersResult = await window.electronAPI.readFile(`${projectPath}/sheets/characters.json`)
+    if (charactersResult.success && charactersResult.content) {
+      sheets.characters = JSON.parse(charactersResult.content)
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const locationsResult = await window.electronAPI.readFile(`${projectPath}/sheets/locations.json`)
+    if (locationsResult.success && locationsResult.content) {
+      sheets.locations = JSON.parse(locationsResult.content)
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const plotsResult = await window.electronAPI.readFile(`${projectPath}/sheets/plots.json`)
+    if (plotsResult.success && plotsResult.content) {
+      sheets.plots = JSON.parse(plotsResult.content)
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const notesResult = await window.electronAPI.readFile(`${projectPath}/sheets/notes.json`)
+    if (notesResult.success && notesResult.content) {
+      sheets.notes = JSON.parse(notesResult.content)
+    }
+  } catch { /* ignore */ }
+
+  return sheets
+}
+
 // Save recent projects to localStorage
 const saveRecentProjectsToStorage = (projects: RecentProject[]) => {
   localStorage.setItem('palimpseste_recentProjects', JSON.stringify(projects))
@@ -190,15 +230,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const sessions = sessionsResult.success ? JSON.parse(sessionsResult.content!) : []
       const goals = goalsResult.success ? JSON.parse(goalsResult.content!) : []
 
+      // Load sheets from disk
+      const sheets = await loadSheetsFromDisk(projectPath)
+
       const project: Project = {
         meta,
         manuscript,
-        sheets: {
-          characters: [],
-          locations: [],
-          plots: [],
-          notes: []
-        },
+        sheets,
         stats: {
           sessions,
           dailyStats: [],
@@ -620,15 +658,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const sessions = sessionsResult.success ? JSON.parse(sessionsResult.content!) : []
       const goals = goalsResult.success ? JSON.parse(goalsResult.content!) : []
 
+      // Load sheets from disk
+      const sheets = await loadSheetsFromDisk(projectPath)
+
       const project: Project = {
         meta,
         manuscript,
-        sheets: {
-          characters: [],
-          locations: [],
-          plots: [],
-          notes: []
-        },
+        sheets,
         stats: {
           sessions,
           dailyStats: [],
@@ -755,6 +791,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
       }
 
+      // Save sheets
+      await window.electronAPI.writeFile(
+        `${projectPath}/sheets/characters.json`,
+        JSON.stringify(project.sheets.characters, null, 2)
+      )
+      await window.electronAPI.writeFile(
+        `${projectPath}/sheets/locations.json`,
+        JSON.stringify(project.sheets.locations, null, 2)
+      )
+      await window.electronAPI.writeFile(
+        `${projectPath}/sheets/plots.json`,
+        JSON.stringify(project.sheets.plots, null, 2)
+      )
+      await window.electronAPI.writeFile(
+        `${projectPath}/sheets/notes.json`,
+        JSON.stringify(project.sheets.notes, null, 2)
+      )
+
       set({ isLoading: false, isSaving: false, isDirty: false })
       useStatsStore.getState().showNotification('success', 'Projet sauvegardé')
     } catch (error) {
@@ -818,15 +872,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const sessions = sessionsResult.success ? JSON.parse(sessionsResult.content!) : []
       const goals = goalsResult.success ? JSON.parse(goalsResult.content!) : []
 
+      // Load sheets from disk
+      const sheets = await loadSheetsFromDisk(lastPath)
+
       const project: Project = {
         meta,
         manuscript,
-        sheets: {
-          characters: [],
-          locations: [],
-          plots: [],
-          notes: []
-        },
+        sheets,
         stats: {
           sessions,
           dailyStats: [],
