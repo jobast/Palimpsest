@@ -115,6 +115,16 @@ const isValidDocumentId = (id: string): boolean => {
   return /^[a-zA-Z0-9_-]+$/.test(id)
 }
 
+// Safe JSON parse with fallback
+const safeJsonParse = <T>(content: string | undefined | null, fallback: T): T => {
+  if (!content) return fallback
+  try {
+    return JSON.parse(content) as T
+  } catch {
+    return fallback
+  }
+}
+
 // Load sheets from disk
 const loadSheetsFromDisk = async (projectPath: string): Promise<Project['sheets']> => {
   const sheets: Project['sheets'] = {
@@ -226,14 +236,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const sessionsResult = await window.electronAPI.readFile(`${projectPath}/stats/sessions.json`)
       const goalsResult = await window.electronAPI.readFile(`${projectPath}/stats/goals.json`)
 
-      if (!metaResult.success || !structureResult.success) {
-        throw new Error('Failed to read project files')
+      if (!metaResult.success || !metaResult.content) {
+        throw new Error('Impossible de lire project.json')
+      }
+      if (!structureResult.success || !structureResult.content) {
+        throw new Error('Impossible de lire structure.json')
       }
 
-      const meta = JSON.parse(metaResult.content!)
-      const manuscript = JSON.parse(structureResult.content!)
-      const sessions = sessionsResult.success ? JSON.parse(sessionsResult.content!) : []
-      const goals = goalsResult.success ? JSON.parse(goalsResult.content!) : []
+      const meta = JSON.parse(metaResult.content)
+      const manuscript = JSON.parse(structureResult.content)
+      const sessions = safeJsonParse(sessionsResult.content, [])
+      const goals = safeJsonParse(goalsResult.content, [])
 
       // Load sheets from disk
       const sheets = await loadSheetsFromDisk(projectPath)
@@ -655,14 +668,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const sessionsResult = await window.electronAPI.readFile(`${projectPath}/stats/sessions.json`)
       const goalsResult = await window.electronAPI.readFile(`${projectPath}/stats/goals.json`)
 
-      if (!metaResult.success || !structureResult.success) {
-        throw new Error('Failed to read project files')
+      if (!metaResult.success || !metaResult.content) {
+        throw new Error('Impossible de lire project.json')
+      }
+      if (!structureResult.success || !structureResult.content) {
+        throw new Error('Impossible de lire structure.json')
       }
 
-      const meta = JSON.parse(metaResult.content!)
-      const manuscript = JSON.parse(structureResult.content!)
-      const sessions = sessionsResult.success ? JSON.parse(sessionsResult.content!) : []
-      const goals = goalsResult.success ? JSON.parse(goalsResult.content!) : []
+      const meta = JSON.parse(metaResult.content)
+      const manuscript = JSON.parse(structureResult.content)
+      const sessions = safeJsonParse(sessionsResult.content, [])
+      const goals = safeJsonParse(goalsResult.content, [])
 
       // Load sheets from disk
       const sheets = await loadSheetsFromDisk(projectPath)
@@ -734,8 +750,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const { project, projectPath, isSaving, activeDocumentId } = get()
     if (!project || !projectPath) return
 
-    // Prevent concurrent saves
-    if (isSaving) return
+    // Prevent concurrent saves - queue a retry if changes made during save
+    if (isSaving) {
+      // Mark as dirty so auto-save will pick it up later
+      set({ isDirty: true })
+      return
+    }
 
     // Flush current document content to store before saving
     // This ensures any pending debounced updates are captured
@@ -876,8 +896,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       const meta = JSON.parse(metaResult.content!)
       const manuscript = JSON.parse(structureResult.content!)
-      const sessions = sessionsResult.success ? JSON.parse(sessionsResult.content!) : []
-      const goals = goalsResult.success ? JSON.parse(goalsResult.content!) : []
+      const sessions = safeJsonParse(sessionsResult.content, [])
+      const goals = safeJsonParse(goalsResult.content, [])
 
       // Load sheets from disk
       const sheets = await loadSheetsFromDisk(lastPath)
