@@ -124,12 +124,9 @@ export function GlobalMapView({ onClose }: GlobalMapViewProps) {
                     <div className="min-w-[200px]">
                       <h3 className="font-semibold text-sm mb-1">{location.name}</h3>
                       {location.description && (
-                        <p
-                          className="text-xs text-muted-foreground line-clamp-3 mb-2"
-                          dangerouslySetInnerHTML={{
-                            __html: location.description.replace(/<[^>]*>/g, ' ').slice(0, 150)
-                          }}
-                        />
+                        <p className="text-xs text-muted-foreground line-clamp-3 mb-2">
+                          {location.description.replace(/<[^>]*>/g, ' ').slice(0, 150)}
+                        </p>
                       )}
                       <button
                         onClick={() => handleOpenSheet(location)}

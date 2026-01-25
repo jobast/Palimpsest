@@ -110,6 +110,11 @@ const loadRecentProjectsFromStorage = (): RecentProject[] => {
   }
 }
 
+// Validate document ID to prevent path traversal attacks
+const isValidDocumentId = (id: string): boolean => {
+  return /^[a-zA-Z0-9_-]+$/.test(id)
+}
+
 // Load sheets from disk
 const loadSheetsFromDisk = async (projectPath: string): Promise<Project['sheets']> => {
   const sheets: Project['sheets'] = {
@@ -260,6 +265,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         for (const file of dirResult.files) {
           if (file.name.endsWith('.json') && !file.isDirectory) {
             const documentId = file.name.replace('.json', '')
+            if (!isValidDocumentId(documentId)) continue
             const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
             if (contentResult.success && contentResult.content) {
               documentContents[documentId] = contentResult.content
@@ -688,6 +694,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         for (const file of dirResult.files) {
           if (file.name.endsWith('.json') && !file.isDirectory) {
             const documentId = file.name.replace('.json', '')
+            if (!isValidDocumentId(documentId)) continue
             const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
             if (contentResult.success && contentResult.content) {
               documentContents[documentId] = contentResult.content
@@ -902,6 +909,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         for (const file of dirResult.files) {
           if (file.name.endsWith('.json') && !file.isDirectory) {
             const documentId = file.name.replace('.json', '')
+            if (!isValidDocumentId(documentId)) continue
             const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
             if (contentResult.success && contentResult.content) {
               documentContents[documentId] = contentResult.content
