@@ -1,7 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
-console.log('Preload script loading...')
-
 contextBridge.exposeInMainWorld('electronAPI', {
   // Dialog operations
   openProject: () => ipcRenderer.invoke('dialog:openProject'),

@@ -4,7 +4,6 @@ import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { useUIStore } from '@/stores/uiStore'
 import { ChevronUp, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react'
-import { ViewModeToggle } from './ViewModeToggle'
 import { PAGE_GAP } from '@/lib/pagination/constants'
 
 /**
@@ -294,11 +293,8 @@ export function PagedEditor() {
         </div>
       )}
 
-      {/* Bottom left controls: View mode toggle + Zoom */}
+      {/* Bottom left controls: Zoom */}
       <div className="absolute bottom-4 left-4 flex items-center gap-2 z-10">
-        {/* View mode toggle */}
-        <ViewModeToggle />
-
         {/* Zoom controls */}
         <button
           onClick={zoomOut}

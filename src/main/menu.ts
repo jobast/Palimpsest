@@ -35,7 +35,6 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           label: 'Nouveau projet',
           accelerator: 'CmdOrCtrl+N',
           click: () => {
-            console.log('Menu: new-project clicked')
             sendToWindow(mainWindow, 'menu:new-project')
           }
         },
@@ -43,7 +42,6 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           label: 'Ouvrir...',
           accelerator: 'CmdOrCtrl+O',
           click: () => {
-            console.log('Menu: open-project clicked')
             sendToWindow(mainWindow, 'menu:open-project')
           }
         },
@@ -52,7 +50,6 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           label: 'Enregistrer',
           accelerator: 'CmdOrCtrl+S',
           click: () => {
-            console.log('Menu: save-project clicked')
             sendToWindow(mainWindow, 'menu:save-project')
           }
         },
@@ -64,7 +61,6 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
               label: 'Exporter en Word (.docx)',
               accelerator: 'CmdOrCtrl+Shift+E',
               click: () => {
-                console.log('Menu: export-docx clicked')
                 sendToWindow(mainWindow, 'menu:export-docx')
               }
             },
@@ -72,7 +68,6 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
               label: 'Exporter en PDF',
               accelerator: 'CmdOrCtrl+Shift+P',
               click: () => {
-                console.log('Menu: export-pdf clicked')
                 sendToWindow(mainWindow, 'menu:export-pdf')
               }
             }
@@ -119,7 +114,6 @@ export function createApplicationMenu(mainWindow: BrowserWindow) {
           label: 'Mode concentration',
           accelerator: 'CmdOrCtrl+Shift+F',
           click: () => {
-            console.log('Menu: toggle-focus-mode clicked')
             sendToWindow(mainWindow, 'menu:toggle-focus-mode')
           }
         },

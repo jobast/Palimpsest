@@ -202,12 +202,6 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
     // 2. Create multiple page entries (for correct page frame rendering)
     // 3. Store actual height in the LAST page so spacer can compensate
     if (nodeHeight > dims.contentHeight) {
-      console.log('[Pagination] OVERSIZED NODE:', {
-        offset: startOffset,
-        nodeHeight: Math.round(nodeHeight),
-        contentHeight: Math.round(dims.contentHeight),
-        currentHeight: Math.round(currentHeight)
-      })
 
       // Force page break if we're not at the start of a page
       if (currentHeight > 0) {
@@ -221,7 +215,6 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
           position: startOffset,
           spacerHeight: remainingOnPage + interPageSpace
         })
-        console.log('[Pagination] Created page break before oversized node, page:', pages.length)
 
         currentPage = {
           pageNumber: pages.length + 1,
@@ -234,7 +227,6 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
 
       // Calculate how many visual pages this oversized node spans
       const pagesSpanned = Math.ceil(nodeHeight / dims.contentHeight)
-      console.log('[Pagination] Oversized node spans', pagesSpanned, 'pages')
 
       // Create page entries for intermediate pages (full height, no page break after)
       // These are "virtual" pages - they don't have decorations but create page frames
@@ -242,7 +234,6 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
         currentPage.endPos = endOffset
         currentPage.contentHeight = dims.contentHeight
         pages.push({ ...currentPage })
-        console.log('[Pagination] Created virtual page', pages.length)
 
         currentPage = {
           pageNumber: pages.length + 1,
@@ -266,10 +257,8 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
           position: endOffset,
           spacerHeight: compensatingSpace
         })
-        console.log('[Pagination] Added compensating spacer after oversized node:', Math.round(compensatingSpace))
       }
 
-      console.log('[Pagination] Last page of oversized node, remainingHeight:', Math.round(remainingHeight))
       return
     }
 
@@ -326,13 +315,6 @@ export function calculatePageBreaks(ctx: CalculationContext): PageBreakResult {
       contentHeight: 0
     })
   }
-
-  console.log('[Pagination] FINAL RESULT:', {
-    totalPages: pages.length,
-    pageBreakCount: pageBreaks.length,
-    pages: pages.map(p => ({ num: p.pageNumber, height: Math.round(p.contentHeight) })),
-    breaks: pageBreaks.map(b => ({ pos: b.position, spacer: Math.round(b.spacerHeight) }))
-  })
 
   return { pages, pageBreaks }
 }

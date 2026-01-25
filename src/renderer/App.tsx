@@ -67,7 +67,6 @@ function App() {
 
     autoSaveTimerRef.current = window.setInterval(() => {
       if (isDirty) {
-        console.log('Auto-saving project...')
         saveProject()
       }
     }, autoSaveInterval * 1000)
@@ -81,7 +80,6 @@ function App() {
 
   // Menu action handler - uses refs to avoid re-registering listeners
   const handleMenuAction = useCallback((action: string) => {
-    console.log('Menu action received:', action)
     const handlers = menuHandlersRef.current
     switch (action) {
       case 'new-project':
@@ -108,15 +106,12 @@ function App() {
   // Listen for menu actions from Electron
   useEffect(() => {
     if (!isElectron) {
-      console.log('Not running in Electron')
       return
     }
 
-    console.log('Setting up menu listeners')
     window.electronAPI.onMenuAction(handleMenuAction)
 
     return () => {
-      console.log('Removing menu listeners')
       window.electronAPI.removeMenuListeners()
     }
   }, [handleMenuAction])

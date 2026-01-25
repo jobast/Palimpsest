@@ -4,8 +4,6 @@ import type { PageTemplate } from '@shared/types/templates'
 import { defaultTemplates } from '@shared/types/templates'
 import type { UserTypographyOverrides } from '@shared/types/project'
 
-export type ViewMode = 'text' | 'page'
-
 // Re-export for convenience
 export type { UserTypographyOverrides }
 
@@ -23,7 +21,6 @@ interface EditorState {
   currentTemplate: PageTemplate
   userTypographyOverrides: UserTypographyOverrides
   documentContents: Map<string, string>
-  viewMode: ViewMode
 
   // Word stats for current session
   sessionStartWords: number
@@ -35,7 +32,6 @@ interface EditorState {
   // Actions
   setEditor: (editor: Editor | null) => void
   setTemplate: (templateId: string) => void
-  setViewMode: (mode: ViewMode) => void
 
   // Typography overrides
   setUserTypographyOverride: <K extends keyof UserTypographyOverrides>(key: K, value: UserTypographyOverrides[K] | null) => void
@@ -62,7 +58,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   currentTemplate: defaultTemplates[0],
   userTypographyOverrides: {},
   documentContents: new Map(),
-  viewMode: 'page' as ViewMode,
 
   sessionStartWords: 0,
   currentWords: 0,
@@ -71,8 +66,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   sessionStartTime: null,
 
   setEditor: (editor) => set({ editor }),
-
-  setViewMode: (mode) => set({ viewMode: mode }),
 
   setTemplate: (templateId) => {
     const template = defaultTemplates.find(t => t.id === templateId)
