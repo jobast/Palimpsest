@@ -9,7 +9,11 @@ Outil d'écriture de romans/manuscrits avec :
 - **Templates de formats** : poche français, grand format, US trade, manuscrit dactylographié...
 - **Structure du manuscrit** : chapitres, scènes, organisation hiérarchique
 - **Fiches** : personnages, lieux (avec géolocalisation), intrigues, notes
+- **Statistiques** : mots écrits, temps d'écriture, objectifs, analyse de productivité
+- **Correction avancée** : analyse stylistique, répétitions, adverbes, voix passive...
 - **Export** : DOCX, PDF aux normes éditoriales
+
+**Roadmap** : intégration IA comme assistant éditeur/écriture (suggestions, révisions, aide créative).
 
 L'utilisateur voit son texte paginé exactement comme il sera imprimé.
 
