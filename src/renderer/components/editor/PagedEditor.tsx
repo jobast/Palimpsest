@@ -29,7 +29,7 @@ export function PagedEditor() {
   const { editor, getEffectiveTypography } = useEditorStore()
   const effectiveTypography = getEffectiveTypography()
   const { currentPage, totalPages, setPages, setCurrentPage, setTotalPages } = usePaginationStore()
-  const { zoomLevel, setZoomLevel, zoomIn, zoomOut, resetZoom } = useUIStore()
+  const { zoomLevel, setZoomLevel, zoomIn, zoomOut, resetZoom, isExportingPdf } = useUIStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const [showPageNav, setShowPageNav] = useState(false)
 
@@ -131,6 +131,9 @@ export function PagedEditor() {
 
   // Virtualization: Generate CSS to hide off-screen pages
   const virtualizationStyle = useMemo(() => {
+    // Disable virtualization during PDF export to ensure all pages are rendered
+    if (isExportingPdf) return null
+
     // Only apply virtualization for documents with more than 10 pages
     if (totalPages <= 10) return null
 
@@ -159,7 +162,7 @@ export function PagedEditor() {
     }
 
     return rules.length > 0 ? rules.join('\n') : null
-  }, [visibleRange, totalPages])
+  }, [visibleRange, totalPages, isExportingPdf])
 
   // Handle scroll to update current page indicator
   // Uses getBoundingClientRect for visual coordinates (works correctly with CSS transform)

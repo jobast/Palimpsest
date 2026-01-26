@@ -22,6 +22,9 @@ interface UIState {
   // Zoom settings
   zoomLevel: number // percentage (50-200)
 
+  // Export state
+  isExportingPdf: boolean
+
   // Actions
   toggleSidebar: () => void
   setSidebarPanel: (panel: SidebarPanel) => void
@@ -39,6 +42,7 @@ interface UIState {
   zoomIn: () => void
   zoomOut: () => void
   resetZoom: () => void
+  setIsExportingPdf: (value: boolean) => void
 }
 
 // Apply theme to document
@@ -80,6 +84,9 @@ export const useUIStore = create<UIState>()(
       // Zoom settings (default: 100%)
       zoomLevel: 100,
 
+      // Export state
+      isExportingPdf: false,
+
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
       setSidebarPanel: (panel) => set({ sidebarPanel: panel, sidebarOpen: true }),
@@ -114,7 +121,8 @@ export const useUIStore = create<UIState>()(
       setZoomLevel: (level) => set({ zoomLevel: Math.min(200, Math.max(50, level)) }),
       zoomIn: () => set((state) => ({ zoomLevel: Math.min(200, state.zoomLevel + 10) })),
       zoomOut: () => set((state) => ({ zoomLevel: Math.max(50, state.zoomLevel - 10) })),
-      resetZoom: () => set({ zoomLevel: 100 })
+      resetZoom: () => set({ zoomLevel: 100 }),
+      setIsExportingPdf: (value) => set({ isExportingPdf: value })
     }),
     {
       name: 'palimpseste-ui-settings',

@@ -1,12 +1,12 @@
 import { useCallback, useState } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
+import { useUIStore } from '@/stores/uiStore'
 import {
   exportToDocx,
-  downloadDocx,
-  exportToPdf,
-  downloadPdf
+  downloadDocx
 } from '@/lib/export'
+import { exportToPdf, downloadPdf } from '@/lib/export/pdfExporter'
 
 export interface ExportState {
   isExporting: boolean
@@ -83,27 +83,17 @@ export function useExport() {
   }, [editor, currentTemplate, project])
 
   /**
-   * Export to PDF format
-   * Requires page elements from PageView component
+   * Export to PDF format using html2canvas + jsPDF
+   * Captures all pages by temporarily disabling virtualization
    */
-  const exportPdf = useCallback(async (pageElements?: HTMLElement[]) => {
+  const exportPdf = useCallback(async () => {
     if (!project) {
       setState(s => ({ ...s, error: 'Projet non disponible' }))
       return
     }
 
-    // If no page elements provided, try to find them in DOM
-    const pages = pageElements || Array.from(
-      document.querySelectorAll('.page-container')
-    ) as HTMLElement[]
-
-    if (pages.length === 0) {
-      setState(s => ({
-        ...s,
-        error: 'Aucune page à exporter. Passez en mode Pages d\'abord.'
-      }))
-      return
-    }
+    const { setIsExportingPdf, zoomLevel, setZoomLevel } = useUIStore.getState()
+    const originalZoom = zoomLevel
 
     setState({
       isExporting: true,
@@ -113,21 +103,64 @@ export function useExport() {
     })
 
     try {
+      setState(s => ({ ...s, progress: 10 }))
+
+      // 1. Disable virtualization and reset zoom to 100%
+      setIsExportingPdf(true)
+      if (zoomLevel !== 100) {
+        setZoomLevel(100)
+      }
+
+      setState(s => ({ ...s, progress: 20 }))
+
+      // 2. Wait for all pages to render (virtualization off, zoom reset)
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      setState(s => ({ ...s, progress: 30 }))
+
+      // 3. Get the editor element
+      const editorElement = document.querySelector('.ProseMirror.rm-with-pagination') as HTMLElement
+
+      if (!editorElement) {
+        throw new Error('Éditeur non trouvé')
+      }
+
+      // Force all elements to be visible (remove any content-visibility)
+      editorElement.style.contentVisibility = 'visible'
+      const allPageBreaks = editorElement.querySelectorAll('.rm-page-break')
+      allPageBreaks.forEach(pageBreak => {
+        (pageBreak as HTMLElement).style.contentVisibility = 'visible'
+      })
+
+      // Wait for forced visibility to take effect
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      const gapsCount = editorElement.querySelectorAll('.rm-pagination-gap').length
+      console.log(`PDF Export: Found editor with ${gapsCount + 1} pages`)
+
+      setState(s => ({ ...s, progress: 40 }))
+
+      // 4. Generate PDF with progress callback
       const blob = await exportToPdf({
-        pages,
+        editorElement,
         template: currentTemplate,
         project,
         quality: 'standard',
         onProgress: (current, total) => {
-          setState(s => ({
-            ...s,
-            progress: Math.round((current / total) * 90)
-          }))
+          const progress = 40 + Math.round((current / total) * 50)
+          setState(s => ({ ...s, progress }))
         }
       })
 
       setState(s => ({ ...s, progress: 95 }))
 
+      // 5. Restore virtualization and zoom
+      setIsExportingPdf(false)
+      if (originalZoom !== 100) {
+        setZoomLevel(originalZoom)
+      }
+
+      // 6. Download PDF
       await downloadPdf(blob, `${project.meta.name}.pdf`)
 
       setState(s => ({ ...s, progress: 100 }))
@@ -142,6 +175,12 @@ export function useExport() {
         })
       }, 1000)
     } catch (error) {
+      // Restore state on error
+      setIsExportingPdf(false)
+      if (originalZoom !== 100) {
+        setZoomLevel(originalZoom)
+      }
+
       console.error('PDF export failed:', error)
       setState({
         isExporting: false,
