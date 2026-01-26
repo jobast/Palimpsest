@@ -153,10 +153,16 @@ export interface WritingSession {
 export interface WritingGoal {
   type: 'daily' | 'weekly' | 'monthly' | 'project'
   target: number
+  /**
+   * Current progress towards the goal.
+   * - For 'project' goals: persisted cumulative word count
+   * - For 'daily' goals: this field is NOT used for progress calculation.
+   *   Daily progress is calculated dynamically from dailyStats to ensure
+   *   automatic reset at midnight. See statsStore.getProgress().
+   */
   current: number
   // Time-based goal (only for daily)
   timeTarget?: number  // Target time in minutes
-  timeCurrent?: number // Current time in minutes
 }
 
 // Aggregated statistics for a single day

@@ -12,6 +12,18 @@ export interface TextAnalysisDecorationsOptions {
 const textAnalysisPluginKey = new PluginKey('textAnalysisDecorations')
 
 /**
+ * Word position cache for O(1) lookups
+ * Built once per document version, then reused for all word searches
+ */
+interface WordPositionCache {
+  positions: Map<string, Array<{ from: number; to: number }>>
+  docVersion: number // Track document version to invalidate cache
+}
+
+// Module-level cache (shared across plugin calls)
+let wordPositionCache: WordPositionCache | null = null
+
+/**
  * Get CSS class for an issue type
  */
 function getIssueClass(type: IssueType): string {
@@ -38,60 +50,62 @@ function getIssueClass(type: IssueType): string {
 }
 
 /**
- * Check if a character is a word character (including French accents)
+ * Build a complete word position cache from the document
+ * This is O(n) where n is document size, but only runs once per document version
  */
-function isWordChar(char: string): boolean {
-  if (!char) return false
-  return /[\p{L}\p{N}]/u.test(char)
-}
-
-/**
- * Find all occurrences of a word in a ProseMirror document
- * Returns array of {from, to} positions with proper word boundaries
- */
-function findWordInDocument(
-  doc: ProseMirrorNode,
-  word: string
-): Array<{ from: number; to: number }> {
-  const results: Array<{ from: number; to: number }> = []
-  const searchWord = word.toLowerCase()
+function buildWordPositionCache(doc: ProseMirrorNode): Map<string, Array<{ from: number; to: number }>> {
+  const positions = new Map<string, Array<{ from: number; to: number }>>()
 
   doc.descendants((node, pos) => {
     if (node.isText && node.text) {
       const text = node.text
-      const textLower = text.toLowerCase()
-      let searchStart = 0
+      // Match words including French accented characters
+      const wordRegex = /[\p{L}\p{N}]+/gu
+      let match
 
-      while (searchStart < textLower.length) {
-        const matchIndex = textLower.indexOf(searchWord, searchStart)
-        if (matchIndex === -1) break
+      while ((match = wordRegex.exec(text)) !== null) {
+        const word = match[0].toLowerCase()
+        const from = pos + match.index
+        const to = from + match[0].length
 
-        // Check word boundaries more carefully
-        const charBefore = matchIndex > 0 ? text[matchIndex - 1] : ''
-        const charAfter = matchIndex + searchWord.length < text.length
-          ? text[matchIndex + searchWord.length]
-          : ''
-
-        const isStartOfWord = !isWordChar(charBefore)
-        const isEndOfWord = !isWordChar(charAfter)
-
-        if (isStartOfWord && isEndOfWord) {
-          // Use the actual length from the original text (preserves case)
-          const actualWord = text.slice(matchIndex, matchIndex + searchWord.length)
-          results.push({
-            from: pos + matchIndex,
-            to: pos + matchIndex + actualWord.length
-          })
-        }
-
-        searchStart = matchIndex + 1
+        const existing = positions.get(word) || []
+        existing.push({ from, to })
+        positions.set(word, existing)
       }
     }
     return true
   })
 
-  return results
+  return positions
 }
+
+/**
+ * Get or build the word position cache for a document
+ * Cache is invalidated when document version changes
+ */
+function getWordPositionCache(doc: ProseMirrorNode, docVersion: number): Map<string, Array<{ from: number; to: number }>> {
+  // Check if cache is valid for current document version
+  if (wordPositionCache && wordPositionCache.docVersion === docVersion) {
+    return wordPositionCache.positions
+  }
+
+  // Build new cache
+  const positions = buildWordPositionCache(doc)
+  wordPositionCache = { positions, docVersion }
+
+  return positions
+}
+
+/**
+ * Find all occurrences of a word using the cache - O(1) lookup
+ */
+function findWordInDocumentCached(
+  cache: Map<string, Array<{ from: number; to: number }>>,
+  word: string
+): Array<{ from: number; to: number }> {
+  return cache.get(word.toLowerCase()) || []
+}
+
 
 /**
  * TextAnalysisDecorations Extension
@@ -131,6 +145,12 @@ export const TextAnalysisDecorations = Extension.create<TextAnalysisDecorationsO
             const decorations: Decoration[] = []
             const doc = state.doc
 
+            // Get or build word position cache - O(n) first time, O(1) subsequent
+            // Use a combination of doc size and content hash as version
+            // For simplicity, use transaction count which changes on each edit
+            const docVersion = (state as any).tr?.time || Date.now()
+            const wordCache = getWordPositionCache(doc, docVersion)
+
             // REPETITIONS MODE
             if (activeMode === 'repetitions') {
               // Extract the selected word from the issue ID (format: repetition-word-{normalized})
@@ -143,7 +163,8 @@ export const TextAnalysisDecorations = Extension.create<TextAnalysisDecorationsO
 
               for (const rep of result.repetitions) {
                 const isSelected = rep.normalized === selectedWord
-                const occurrences = findWordInDocument(doc, rep.word)
+                // O(1) lookup using cache instead of O(n) document traversal
+                const occurrences = findWordInDocumentCached(wordCache, rep.word)
 
                 for (const occ of occurrences) {
                   try {
@@ -175,7 +196,8 @@ export const TextAnalysisDecorations = Extension.create<TextAnalysisDecorationsO
 
               for (const issue of issuesToHighlight) {
                 if (issue.type === 'adverb' || issue.type === 'weak-verb') {
-                  const occurrences = findWordInDocument(doc, issue.text)
+                  // O(1) lookup using cache instead of O(n) document traversal
+                  const occurrences = findWordInDocumentCached(wordCache, issue.text)
 
                   for (const occ of occurrences) {
                     const cssClass = getIssueClass(issue.type)

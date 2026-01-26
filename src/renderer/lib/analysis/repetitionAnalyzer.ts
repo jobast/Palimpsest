@@ -84,6 +84,7 @@ export function detectRepetitions(
 
 /**
  * Find occurrences that are within the proximity window
+ * Uses sliding window algorithm for O(n) complexity instead of O(n²)
  */
 function findCloseOccurrences(
   occurrences: TokenWithSentence[],
@@ -91,28 +92,29 @@ function findCloseOccurrences(
 ): TokenWithSentence[] {
   if (occurrences.length < 2) return []
 
-  // Find the longest sequence of close occurrences
-  let bestSequence: TokenWithSentence[] = []
+  // Sort by wordIndex to enable sliding window (should already be sorted, but ensure it)
+  const sorted = occurrences.slice().sort((a, b) => a.wordIndex - b.wordIndex)
 
-  for (let i = 0; i < occurrences.length; i++) {
-    const sequence: TokenWithSentence[] = [occurrences[i]]
+  // Sliding window approach: O(n) instead of O(n²)
+  // We find the densest cluster of occurrences within any window
+  let maxSequence: TokenWithSentence[] = []
+  let left = 0
 
-    for (let j = i + 1; j < occurrences.length; j++) {
-      const lastInSeq = sequence[sequence.length - 1]
-      const current = occurrences[j]
-
-      // Check if within window (by word index, not character position)
-      if (current.wordIndex - lastInSeq.wordIndex <= windowSize) {
-        sequence.push(current)
-      }
+  for (let right = 0; right < sorted.length; right++) {
+    // Shrink window from left while the span exceeds windowSize
+    while (sorted[right].wordIndex - sorted[left].wordIndex > windowSize) {
+      left++
     }
 
-    if (sequence.length > bestSequence.length) {
-      bestSequence = sequence
+    // Current window contains all elements from left to right (inclusive)
+    const windowLength = right - left + 1
+    if (windowLength > maxSequence.length) {
+      // Extract the current window as the new best sequence
+      maxSequence = sorted.slice(left, right + 1)
     }
   }
 
-  return bestSequence
+  return maxSequence
 }
 
 /**

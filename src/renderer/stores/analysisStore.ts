@@ -7,30 +7,25 @@ import type {
   IssueType
 } from '@/lib/analysis/types'
 import { DEFAULT_ANALYSIS_SETTINGS } from '@/lib/analysis/types'
-import {
-  segmentSentences,
-  analyzeSentences,
-  calculateSentenceStats
-} from '@/lib/analysis/sentenceAnalyzer'
-import {
-  detectRepetitions,
-  detectRepeatedStarters,
-  repetitionsToIssues
-} from '@/lib/analysis/repetitionAnalyzer'
-import {
-  analyzeWordTypes,
-  calculateWordTypeStats,
-  wordTypesToIssues
-} from '@/lib/analysis/wordTypeAnalyzer'
+import type { WorkerResponse } from '@/lib/analysis/analysisWorker'
 
 // Analysis modes - one at a time
 export type AnalysisMode = 'sentences' | 'repetitions' | 'style'
+
+// Analysis progress tracking
+interface AnalysisProgress {
+  step: string
+  progress: number // 0-100
+}
 
 interface AnalysisState {
   // Results
   result: AnalysisResult | null
   isAnalyzing: boolean
   lastAnalyzedDocumentId: string | null
+
+  // Progress tracking for UI feedback
+  analysisProgress: AnalysisProgress | null
 
   // Settings (persisted)
   settings: AnalysisSettings
@@ -39,8 +34,13 @@ interface AnalysisState {
   activeMode: AnalysisMode | null  // Which mode is active (null = none)
   selectedIssueId: string | null
 
+  // Worker instance (not persisted)
+  _worker: Worker | null
+  _currentAnalysisId: string | null
+
   // Actions
   runAnalysis: (text: string, documentId: string) => Promise<void>
+  cancelAnalysis: () => void
   clearResults: () => void
   updateSettings: (updates: Partial<AnalysisSettings>) => void
   setActiveMode: (mode: AnalysisMode | null) => void
@@ -51,6 +51,28 @@ interface AnalysisState {
   getActiveTypesForHighlight: () => IssueType[]
 }
 
+/**
+ * Create or get the analysis worker instance
+ */
+function getOrCreateWorker(state: AnalysisState): Worker {
+  if (state._worker) return state._worker
+
+  // Create worker using Vite's worker syntax
+  const worker = new Worker(
+    new URL('../lib/analysis/analysisWorker.ts', import.meta.url),
+    { type: 'module' }
+  )
+
+  return worker
+}
+
+/**
+ * Generate unique analysis ID
+ */
+function generateAnalysisId(): string {
+  return `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
 export const useAnalysisStore = create<AnalysisState>()(
   persist(
     (set, get) => ({
@@ -58,83 +80,108 @@ export const useAnalysisStore = create<AnalysisState>()(
       result: null,
       isAnalyzing: false,
       lastAnalyzedDocumentId: null,
+      analysisProgress: null,
       settings: DEFAULT_ANALYSIS_SETTINGS,
       activeMode: null,
       selectedIssueId: null,
+      _worker: null,
+      _currentAnalysisId: null,
 
-      // Run analysis on text
+      // Run analysis on text using Web Worker (non-blocking)
       runAnalysis: async (text: string, documentId: string) => {
-        set({ isAnalyzing: true })
+        const state = get()
 
-        try {
-          const { settings } = get()
+        // Cancel any existing analysis
+        if (state._currentAnalysisId && state._worker) {
+          state._worker.postMessage({ type: 'cancel', id: state._currentAnalysisId })
+        }
 
-          // Small delay to allow UI to update
-          await new Promise(resolve => setTimeout(resolve, 10))
+        const analysisId = generateAnalysisId()
+        const worker = getOrCreateWorker(state)
 
-          // 1. Segment sentences
-          const sentences = segmentSentences(text)
+        set({
+          isAnalyzing: true,
+          analysisProgress: { step: 'Initialisation...', progress: 0 },
+          _worker: worker,
+          _currentAnalysisId: analysisId
+        })
 
-          // 2. Analyze sentences
-          const sentenceIssues = analyzeSentences(
-            sentences,
-            settings.longSentenceThreshold,
-            settings.veryLongSentenceThreshold
-          )
+        return new Promise<void>((resolve, reject) => {
+          const handleMessage = (event: MessageEvent<WorkerResponse>) => {
+            const message = event.data
 
-          // 3. Detect repetitions
-          const wordRepetitions = detectRepetitions(
-            text,
-            sentences,
-            0,
-            settings.repetitionWindow,
-            settings.minRepetitionCount,
-            settings.ignoreCommonWords
-          )
-          const starterRepetitions = detectRepeatedStarters(sentences, settings.minRepetitionCount)
-          const repetitionIssues = repetitionsToIssues(wordRepetitions, starterRepetitions)
+            // Ignore messages from other analysis runs
+            if (message.id !== analysisId) return
 
-          // 4. Analyze word types
-          const wordTypes = analyzeWordTypes(text)
-          const wordTypeIssues = wordTypesToIssues(wordTypes, true, true)
+            if (message.type === 'progress') {
+              set({ analysisProgress: { step: message.step, progress: message.progress } })
+            }
 
-          // 5. Calculate stats
-          const sentenceStats = calculateSentenceStats(
-            sentences,
-            settings.longSentenceThreshold,
-            settings.veryLongSentenceThreshold
-          )
-          const wordTypeStats = calculateWordTypeStats(wordTypes, sentences.length)
+            if (message.type === 'result') {
+              const hasIssues = message.result.issues.some(
+                i => i.type === 'long-sentence' ||
+                     i.type === 'very-long-sentence' ||
+                     i.type.startsWith('repetition')
+              )
 
-          // Combine all issues
-          const allIssues = [...sentenceIssues, ...repetitionIssues, ...wordTypeIssues]
+              set({
+                result: message.result,
+                isAnalyzing: false,
+                lastAnalyzedDocumentId: documentId,
+                analysisProgress: null,
+                activeMode: hasIssues ? 'sentences' : null,
+                _currentAnalysisId: null
+              })
 
-          // Create result
-          const result: AnalysisResult = {
-            sentences,
-            issues: allIssues,
-            repetitions: [...wordRepetitions, ...starterRepetitions],
-            wordTypes,
-            stats: {
-              ...sentenceStats,
-              ...wordTypeStats,
-              repetitionCount: wordRepetitions.length + starterRepetitions.length
-            },
-            timestamp: Date.now(),
-            documentId
+              worker.removeEventListener('message', handleMessage)
+              resolve()
+            }
+
+            if (message.type === 'error') {
+              console.error('Analysis worker error:', message.error)
+
+              // Only update state if this was the current analysis
+              if (get()._currentAnalysisId === analysisId) {
+                set({
+                  isAnalyzing: false,
+                  analysisProgress: null,
+                  _currentAnalysisId: null
+                })
+              }
+
+              worker.removeEventListener('message', handleMessage)
+
+              if (message.error === 'Cancelled') {
+                resolve() // Cancellation is not an error
+              } else {
+                reject(new Error(message.error))
+              }
+            }
           }
 
-          // Set result and auto-activate sentences mode if issues found
-          const hasIssues = sentenceIssues.length > 0 || repetitionIssues.length > 0
-          set({
-            result,
-            isAnalyzing: false,
-            lastAnalyzedDocumentId: documentId,
-            activeMode: hasIssues ? 'sentences' : null
+          worker.addEventListener('message', handleMessage)
+
+          // Send analysis request to worker
+          worker.postMessage({
+            type: 'analyze',
+            id: analysisId,
+            text,
+            settings: state.settings,
+            documentId
           })
-        } catch (error) {
-          console.error('Analysis error:', error)
-          set({ isAnalyzing: false })
+        })
+      },
+
+      // Cancel ongoing analysis
+      cancelAnalysis: () => {
+        const { _worker, _currentAnalysisId } = get()
+        if (_worker && _currentAnalysisId) {
+          _worker.postMessage({ type: 'cancel', id: _currentAnalysisId })
+          set({
+            isAnalyzing: false,
+            analysisProgress: null,
+            _currentAnalysisId: null
+          })
         }
       },
 
@@ -212,10 +259,17 @@ export const useAnalysisStore = create<AnalysisState>()(
       partialize: (state) => ({
         settings: state.settings,
         activeMode: state.activeMode
+        // Explicitly exclude: result, isAnalyzing, analysisProgress, _worker, _currentAnalysisId
       }),
       merge: (persistedState: any, currentState) => ({
         ...currentState,
-        ...persistedState
+        ...persistedState,
+        // Ensure non-persisted state is reset on load
+        result: null,
+        isAnalyzing: false,
+        analysisProgress: null,
+        _worker: null,
+        _currentAnalysisId: null
       })
     }
   )

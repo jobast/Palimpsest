@@ -1,10 +1,17 @@
-import { useRef, useCallback, useState, useEffect } from 'react'
+import { useRef, useCallback, useState, useEffect, useMemo } from 'react'
 import { EditorContent } from '@tiptap/react'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { useUIStore } from '@/stores/uiStore'
 import { ChevronUp, ChevronDown, ZoomIn, ZoomOut } from 'lucide-react'
 import { PAGE_GAP } from '@/lib/pagination/constants'
+
+// Number of pages to keep rendered before/after visible area
+const BUFFER_PAGES = 2
+
+// Approximate page height in pixels (for content-visibility intrinsic size)
+// This should match the CSS for .rm-page-break height
+const APPROX_PAGE_HEIGHT = 1123
 
 /**
  * PagedEditor Component
@@ -16,6 +23,7 @@ import { PAGE_GAP } from '@/lib/pagination/constants'
  * - Scrollable container for the editor
  * - Zoom controls
  * - Page navigation
+ * - Virtualized rendering for large documents (100,000+ words)
  */
 export function PagedEditor() {
   const { editor, getEffectiveTypography } = useEditorStore()
@@ -28,6 +36,9 @@ export function PagedEditor() {
   // Track programmatic scrolling to prevent handleScroll from overwriting page number
   const isScrollingProgrammatically = useRef(false)
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Virtualization: track which pages are in the visible range
+  const [visibleRange, setVisibleRange] = useState({ start: 1, end: 3 })
 
   // Zoom scale factor
   const scale = zoomLevel / 100
@@ -67,6 +78,88 @@ export function PagedEditor() {
       clearTimeout(initialTimer)
     }
   }, [editor, setPages, setTotalPages])
+
+  // Virtualization: IntersectionObserver to track visible pages
+  useEffect(() => {
+    if (!editor || totalPages <= 1) return
+
+    const editorElement = editor.view.dom as HTMLElement
+    const pageBreaks = editorElement.querySelectorAll('.rm-page-break')
+
+    if (pageBreaks.length === 0) return
+
+    // Track which pages are currently intersecting
+    const visiblePages = new Set<number>()
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          const pageNum = parseInt(entry.target.getAttribute('data-page') || '1', 10)
+
+          if (entry.isIntersecting) {
+            visiblePages.add(pageNum)
+          } else {
+            visiblePages.delete(pageNum)
+          }
+        })
+
+        if (visiblePages.size > 0) {
+          const minVisible = Math.min(...visiblePages)
+          const maxVisible = Math.max(...visiblePages)
+
+          setVisibleRange({
+            start: Math.max(1, minVisible - BUFFER_PAGES),
+            end: Math.min(totalPages, maxVisible + BUFFER_PAGES)
+          })
+        }
+      },
+      {
+        root: containerRef.current,
+        rootMargin: '200px 0px', // Start loading pages before they enter viewport
+        threshold: 0.01 // Trigger when even 1% is visible
+      }
+    )
+
+    // Add data-page attributes and observe each page break
+    pageBreaks.forEach((el, i) => {
+      el.setAttribute('data-page', String(i + 1))
+      observer.observe(el)
+    })
+
+    return () => observer.disconnect()
+  }, [editor, totalPages])
+
+  // Virtualization: Generate CSS to hide off-screen pages
+  const virtualizationStyle = useMemo(() => {
+    // Only apply virtualization for documents with more than 10 pages
+    if (totalPages <= 10) return null
+
+    // Generate CSS rules to hide pages outside the visible range
+    // Using content-visibility: hidden for performance
+    const rules: string[] = []
+
+    // Hide pages before visible range
+    if (visibleRange.start > 1) {
+      rules.push(`
+        .rm-page-break:nth-child(-n+${visibleRange.start - 1}) {
+          content-visibility: hidden;
+          contain-intrinsic-size: 0 ${APPROX_PAGE_HEIGHT}px;
+        }
+      `)
+    }
+
+    // Hide pages after visible range
+    if (visibleRange.end < totalPages) {
+      rules.push(`
+        .rm-page-break:nth-child(n+${visibleRange.end + 1}) {
+          content-visibility: hidden;
+          contain-intrinsic-size: 0 ${APPROX_PAGE_HEIGHT}px;
+        }
+      `)
+    }
+
+    return rules.length > 0 ? rules.join('\n') : null
+  }, [visibleRange, totalPages])
 
   // Handle scroll to update current page indicator
   // Uses getBoundingClientRect for visual coordinates (works correctly with CSS transform)
@@ -207,6 +300,11 @@ export function PagedEditor() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
+      {/* Virtualization CSS - dynamically hides off-screen pages */}
+      {virtualizationStyle && (
+        <style dangerouslySetInnerHTML={{ __html: virtualizationStyle }} />
+      )}
+
       {/* Scrollable container */}
       <div
         ref={containerRef}

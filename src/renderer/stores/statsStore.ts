@@ -8,7 +8,6 @@ import type {
   ManuscriptMode
 } from '@shared/types/project'
 import { calculateStreak, checkGoalReached, getTodayDateString } from '@/lib/stats/calculations'
-import { updateDailyStats } from '@/lib/stats/aggregations'
 
 // Session states
 type SessionState = 'idle' | 'active' | 'writing' | 'paused'
@@ -19,6 +18,12 @@ type ChartType = 'trend' | 'productivity' | 'cumulative'
 
 // Pause timeout in milliseconds (60 seconds)
 const PAUSE_TIMEOUT = 60_000
+
+// Maximum days to keep session data in active memory (older data is archived)
+const MAX_SESSIONS_DAYS = 90
+
+// LocalStorage key for archived stats
+const ARCHIVE_STORAGE_KEY = 'palimpseste-stats-archive'
 
 interface CurrentSession {
   state: SessionState
@@ -56,6 +61,9 @@ interface StatsState {
   chartType: ChartType
   chartsExpanded: boolean
 
+  // Performance: O(1) lookup map for dailyStats (not persisted, rebuilt on rehydration)
+  _dailyStatsMap: Map<string, number> // date → index in dailyStats array
+
   // Actions
   setManuscriptMode: (mode: ManuscriptMode) => void
 
@@ -74,6 +82,11 @@ interface StatsState {
   recalculateStreak: () => void
   getTodayStats: () => DailyStats | null
   getProgress: (goalType: WritingGoal['type']) => { current: number; target: number; percentage: number }
+  validateDailyState: () => void
+
+  // Data archiving (for long-term memory optimization)
+  archiveOldData: () => { archivedSessions: number; archivedDays: number }
+  getArchivedStats: () => { sessions: WritingSession[]; dailyStats: DailyStats[] } | null
 
   // Notifications
   showNotification: (type: 'info' | 'success' | 'error', message: string) => void
@@ -115,6 +128,15 @@ const defaultCurrentSession: CurrentSession = {
   documentId: null
 }
 
+/**
+ * Helper to build the dailyStats index map for O(1) lookups
+ */
+function buildDailyStatsMap(dailyStats: DailyStats[]): Map<string, number> {
+  const map = new Map<string, number>()
+  dailyStats.forEach((d, i) => map.set(d.date, i))
+  return map
+}
+
 export const useStatsStore = create<StatsState>()(
   persist(
     (set, get) => ({
@@ -131,23 +153,24 @@ export const useStatsStore = create<StatsState>()(
       chartPeriod: '7d',
       chartType: 'trend',
       chartsExpanded: false,
+      _dailyStatsMap: new Map(),
 
       setManuscriptMode: (mode) => {
         set({ manuscriptMode: mode })
         // Recalculate daily goal reached status based on new mode
         const state = get()
         const today = getTodayDateString()
-        const todayStats = state.dailyStats.find(d => d.date === today)
-        if (todayStats) {
+        // O(1) lookup using map
+        const todayIndex = state._dailyStatsMap.get(today)
+        if (todayIndex !== undefined) {
+          const todayStats = state.dailyStats[todayIndex]
           const dailyGoal = state.goals.find(g => g.type === 'daily')
           if (dailyGoal) {
             const goalReached = checkGoalReached(todayStats, dailyGoal.target, mode)
             if (goalReached !== todayStats.goalReached) {
-              set({
-                dailyStats: state.dailyStats.map(d =>
-                  d.date === today ? { ...d, goalReached } : d
-                )
-              })
+              const updatedDailyStats = [...state.dailyStats]
+              updatedDailyStats[todayIndex] = { ...todayStats, goalReached }
+              set({ dailyStats: updatedDailyStats })
             }
           }
         }
@@ -172,7 +195,7 @@ export const useStatsStore = create<StatsState>()(
 
       recordActivity: (currentWords, wordsAdded, wordsDeleted) => {
         const state = get()
-        const { currentSession, goals, manuscriptMode, dailyStats, streak } = state
+        const { currentSession, goals, manuscriptMode, dailyStats, streak, _dailyStatsMap } = state
         const now = new Date()
 
         // Update session stats
@@ -197,32 +220,59 @@ export const useStatsStore = create<StatsState>()(
           }
         })
 
-        // Update today's stats
+        // Update today's stats with O(1) lookup
         const today = getTodayDateString()
         const dailyGoal = goals.find(g => g.type === 'daily')
-        const updatedDailyStats = updateDailyStats(
-          dailyStats,
-          today,
-          wordsAdded,
-          wordsDeleted,
-          0, // duration updated on session end
-          dailyGoal?.target ?? 500,
-          manuscriptMode
-        )
+        const dailyTarget = dailyGoal?.target ?? 500
+
+        // O(1) lookup for today's stats
+        const todayIndex = _dailyStatsMap.get(today)
+        let updatedDailyStats: DailyStats[]
+        let updatedMap = _dailyStatsMap
+        let previousGoalReached = false
+
+        if (todayIndex === undefined) {
+          // Create new entry for today
+          const newStats: DailyStats = {
+            date: today,
+            totalWordsAdded: wordsAdded,
+            totalWordsDeleted: wordsDeleted,
+            netWords: wordsAdded - wordsDeleted,
+            totalMinutes: 0, // Incremented on session end
+            sessionCount: 0,
+            goalReached: false
+          }
+          newStats.goalReached = checkGoalReached(newStats, dailyTarget, manuscriptMode)
+          updatedDailyStats = [...dailyStats, newStats]
+
+          // Update map with new index
+          updatedMap = new Map(_dailyStatsMap)
+          updatedMap.set(today, updatedDailyStats.length - 1)
+        } else {
+          // O(1) direct access to update existing entry
+          const existing = dailyStats[todayIndex]
+          previousGoalReached = existing.goalReached
+
+          const updatedStats: DailyStats = {
+            ...existing,
+            totalWordsAdded: existing.totalWordsAdded + wordsAdded,
+            totalWordsDeleted: existing.totalWordsDeleted + wordsDeleted,
+            netWords: existing.netWords + wordsAdded - wordsDeleted
+          }
+          updatedStats.goalReached = checkGoalReached(updatedStats, dailyTarget, manuscriptMode)
+
+          // Update array in place (create new array for immutability)
+          updatedDailyStats = [...dailyStats]
+          updatedDailyStats[todayIndex] = updatedStats
+        }
 
         // Check if daily goal just reached
-        const todayStats = updatedDailyStats.find(d => d.date === today)
-        const previousTodayStats = dailyStats.find(d => d.date === today)
-        const justReachedGoal = todayStats?.goalReached && !previousTodayStats?.goalReached
+        const todayStats = updatedDailyStats[updatedMap.get(today)!]
+        const justReachedGoal = todayStats.goalReached && !previousGoalReached
 
-        // Update goals current values
+        // Update project goal current value only
+        // Daily goal current is calculated dynamically in getProgress() from dailyStats
         const updatedGoals = goals.map(goal => {
-          if (goal.type === 'daily' && todayStats) {
-            const current = manuscriptMode === 'drafting'
-              ? todayStats.netWords
-              : todayStats.totalWordsAdded + todayStats.totalWordsDeleted
-            return { ...goal, current: Math.max(0, current) }
-          }
           if (goal.type === 'project') {
             return { ...goal, current: state.totalWords + (currentWords - currentSession.wordsAtStart) }
           }
@@ -249,6 +299,7 @@ export const useStatsStore = create<StatsState>()(
 
           set({
             dailyStats: updatedDailyStats,
+            _dailyStatsMap: updatedMap,
             goals: updatedGoals,
             streak: newStreak,
             pendingNotifications: notifications
@@ -256,6 +307,7 @@ export const useStatsStore = create<StatsState>()(
         } else {
           set({
             dailyStats: updatedDailyStats,
+            _dailyStatsMap: updatedMap,
             goals: updatedGoals,
             pendingNotifications: notifications
           })
@@ -295,7 +347,7 @@ export const useStatsStore = create<StatsState>()(
 
       endSession: () => {
         const state = get()
-        const { currentSession, sessions, dailyStats, goals } = state
+        const { currentSession, sessions, dailyStats, goals, _dailyStatsMap } = state
 
         if (currentSession.state === 'idle' || !currentSession.startTime) {
           return null
@@ -317,18 +369,23 @@ export const useStatsStore = create<StatsState>()(
           durationMinutes
         }
 
-        // Update daily stats with duration
+        // Update daily stats with duration - O(1) lookup
         const today = getTodayDateString()
-        const updatedDailyStats = dailyStats.map(d => {
-          if (d.date === today) {
-            return {
-              ...d,
-              totalMinutes: d.totalMinutes + durationMinutes,
-              sessionCount: d.sessionCount + 1
-            }
+        const todayIndex = _dailyStatsMap.get(today)
+        let updatedDailyStats: DailyStats[]
+
+        if (todayIndex !== undefined) {
+          const todayStats = dailyStats[todayIndex]
+          updatedDailyStats = [...dailyStats]
+          updatedDailyStats[todayIndex] = {
+            ...todayStats,
+            totalMinutes: todayStats.totalMinutes + durationMinutes,
+            sessionCount: todayStats.sessionCount + 1
           }
-          return d
-        })
+        } else {
+          // Edge case: no dailyStats for today (shouldn't happen normally)
+          updatedDailyStats = dailyStats
+        }
 
         // Update total words
         const newTotalWords = state.totalWords + session.netWords
@@ -410,22 +467,127 @@ export const useStatsStore = create<StatsState>()(
       },
 
       getTodayStats: () => {
-        const { dailyStats } = get()
+        const { dailyStats, _dailyStatsMap } = get()
         const today = getTodayDateString()
-        return dailyStats.find(d => d.date === today) ?? null
+        // O(1) lookup
+        const index = _dailyStatsMap.get(today)
+        return index !== undefined ? dailyStats[index] : null
       },
 
       getProgress: (goalType) => {
-        const { goals } = get()
+        const { goals, dailyStats, manuscriptMode, _dailyStatsMap } = get()
         const goal = goals.find(g => g.type === goalType)
         if (!goal) {
           return { current: 0, target: 0, percentage: 0 }
         }
-        const percentage = goal.target > 0 ? Math.min(100, (goal.current / goal.target) * 100) : 0
+
+        let current: number
+        if (goalType === 'daily') {
+          // Calculate daily current dynamically from today's stats
+          // This ensures the counter resets naturally at midnight
+          const today = getTodayDateString()
+          // O(1) lookup
+          const index = _dailyStatsMap.get(today)
+          const todayStats = index !== undefined ? dailyStats[index] : null
+          if (todayStats) {
+            current = manuscriptMode === 'drafting'
+              ? Math.max(0, todayStats.netWords)
+              : todayStats.totalWordsAdded + todayStats.totalWordsDeleted
+          } else {
+            current = 0
+          }
+        } else {
+          // For project goals, use the persisted current value
+          current = goal.current
+        }
+
+        const percentage = goal.target > 0 ? Math.min(100, (current / goal.target) * 100) : 0
         return {
-          current: goal.current,
+          current,
           target: goal.target,
           percentage
+        }
+      },
+
+      validateDailyState: () => {
+        // Called on app startup to ensure consistent state
+        // Recalculates streak in case midnight has passed since last session
+        const { dailyStats, streak } = get()
+        const newStreak = calculateStreak(dailyStats)
+
+        // Only update if streak has changed
+        if (newStreak.current !== streak.current || newStreak.longest !== streak.longest) {
+          set({ streak: newStreak })
+        }
+      },
+
+      // Archive old session data to reduce memory usage
+      // Keeps last MAX_SESSIONS_DAYS (90 days) in active memory
+      archiveOldData: () => {
+        const { sessions, dailyStats } = get()
+
+        // Calculate cutoff date
+        const cutoffDate = new Date()
+        cutoffDate.setDate(cutoffDate.getDate() - MAX_SESSIONS_DAYS)
+        const cutoffStr = cutoffDate.toISOString().split('T')[0] // YYYY-MM-DD
+
+        // Separate recent and old data
+        const recentSessions = sessions.filter(s => s.date >= cutoffStr)
+        const oldSessions = sessions.filter(s => s.date < cutoffStr)
+
+        const recentDailyStats = dailyStats.filter(d => d.date >= cutoffStr)
+        const oldDailyStats = dailyStats.filter(d => d.date < cutoffStr)
+
+        // Nothing to archive
+        if (oldSessions.length === 0 && oldDailyStats.length === 0) {
+          return { archivedSessions: 0, archivedDays: 0 }
+        }
+
+        // Load existing archive
+        const existingArchive = get().getArchivedStats() || { sessions: [], dailyStats: [] }
+
+        // Merge with existing archive (avoiding duplicates)
+        const existingSessionIds = new Set(existingArchive.sessions.map(s => s.id))
+        const newArchivedSessions = oldSessions.filter(s => !existingSessionIds.has(s.id))
+        const mergedSessions = [...existingArchive.sessions, ...newArchivedSessions]
+
+        const existingDates = new Set(existingArchive.dailyStats.map(d => d.date))
+        const newArchivedDays = oldDailyStats.filter(d => !existingDates.has(d.date))
+        const mergedDailyStats = [...existingArchive.dailyStats, ...newArchivedDays]
+
+        // Save archive to localStorage
+        try {
+          const archive = { sessions: mergedSessions, dailyStats: mergedDailyStats }
+          localStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archive))
+        } catch (error) {
+          console.error('Failed to archive stats:', error)
+          // Don't update state if archive failed
+          return { archivedSessions: 0, archivedDays: 0 }
+        }
+
+        // Update state with only recent data
+        const newMap = buildDailyStatsMap(recentDailyStats)
+        set({
+          sessions: recentSessions,
+          dailyStats: recentDailyStats,
+          _dailyStatsMap: newMap
+        })
+
+        return {
+          archivedSessions: oldSessions.length,
+          archivedDays: oldDailyStats.length
+        }
+      },
+
+      // Retrieve archived stats (for historical analysis)
+      getArchivedStats: () => {
+        try {
+          const archived = localStorage.getItem(ARCHIVE_STORAGE_KEY)
+          if (!archived) return null
+          return JSON.parse(archived) as { sessions: WritingSession[]; dailyStats: DailyStats[] }
+        } catch (error) {
+          console.error('Failed to read archived stats:', error)
+          return null
         }
       },
 
@@ -486,7 +648,31 @@ export const useStatsStore = create<StatsState>()(
         streak: state.streak,
         manuscriptMode: state.manuscriptMode,
         totalWords: state.totalWords
-      })
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Called when store rehydrates from localStorage
+        if (state) {
+          // Rebuild the O(1) lookup map from persisted dailyStats
+          state._dailyStatsMap = buildDailyStatsMap(state.dailyStats)
+          // Validate daily state to ensure streak is recalculated if midnight passed
+          state.validateDailyState()
+
+          // Auto-archive old data on startup if there's significant historical data
+          // This keeps memory usage low for long-term users
+          const oldDataCount = state.sessions.filter(s => {
+            const cutoffDate = new Date()
+            cutoffDate.setDate(cutoffDate.getDate() - MAX_SESSIONS_DAYS)
+            return s.date < cutoffDate.toISOString().split('T')[0]
+          }).length
+
+          if (oldDataCount > 100) {
+            // Defer archiving to not block startup
+            setTimeout(() => {
+              state.archiveOldData()
+            }, 5000)
+          }
+        }
+      }
     }
   )
 )
