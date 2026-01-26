@@ -363,6 +363,19 @@ function SheetsPanel() {
     duplicateSheet
   } = useProjectStore()
   const [showGlobalMap, setShowGlobalMap] = useState(false)
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
+
+  const toggleCategory = (key: string) => {
+    setCollapsedCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
 
   if (!project) return null
 
@@ -465,14 +478,20 @@ function SheetsPanel() {
 
   return (
     <div className="p-2 space-y-4">
-      {sheetCategories.map((cat) => (
+      {sheetCategories.map((cat) => {
+        const isCollapsed = collapsedCategories.has(cat.key)
+        return (
         <div key={cat.key}>
           <div className="flex items-center justify-between px-2 mb-1">
-            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <button
+              onClick={() => toggleCategory(cat.key)}
+              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
               {cat.icon}
               <span>{cat.label}</span>
               <span className="text-[10px]">({cat.items.length})</span>
-            </div>
+            </button>
             <div className="flex items-center gap-1">
               {cat.extraButton}
               <button
@@ -485,12 +504,12 @@ function SheetsPanel() {
             </div>
           </div>
 
-          {cat.items.length === 0 ? (
+          {!isCollapsed && (cat.items.length === 0 ? (
             <p className="text-xs text-muted-foreground pl-6 py-1 italic">
               Aucun {cat.label.toLowerCase()}
             </p>
           ) : (
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {cat.items.map((sheet) => {
                 // Check if this is a location with coordinates
                 const isGeolocated = cat.type === 'location' && (sheet as LocationSheet).coordinates
@@ -620,9 +639,10 @@ function SheetsPanel() {
                 )
               })}
             </div>
-          )}
+          ))}
         </div>
-      ))}
+      )})}
+
 
       {/* AI Reports Section */}
       {project.reports.length > 0 && (

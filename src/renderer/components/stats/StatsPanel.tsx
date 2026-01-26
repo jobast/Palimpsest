@@ -122,7 +122,7 @@ export function StatsPanel() {
       </section>
 
       {/* Calendar */}
-      <section>
+      <section className="border-t border-border pt-4 mt-2">
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
           Calendrier
         </h3>
@@ -150,7 +150,7 @@ export function StatsPanel() {
       <TrendsSection />
 
       {/* Summary Stats */}
-      <section>
+      <section className="border-t border-border pt-4 mt-2">
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           Statistiques globales
         </h3>

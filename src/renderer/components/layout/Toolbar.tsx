@@ -1,8 +1,6 @@
-import { useState } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { defaultTemplates } from '@shared/types/templates'
 import { MiniTimer, MiniCircularProgress, CompactStreak } from '@/components/stats'
 import { useStatsStore } from '@/stores/statsStore'
 import {
@@ -25,8 +23,6 @@ import {
   Maximize2,
   Save,
   Settings,
-  ChevronDown,
-  FileText,
   Asterisk,
   Sun,
   Moon
@@ -185,11 +181,6 @@ export function Toolbar() {
       <StatsIndicators />
       <ToolbarSeparator />
 
-      {/* Template selector */}
-      <TemplateSelector />
-
-      <ToolbarSeparator />
-
       {/* Focus mode */}
       <ToolbarButton icon={<Maximize2 size={16} />} onClick={toggleFocusMode} title="Mode focus (⌘⇧F)" />
 
@@ -244,57 +235,6 @@ function ToolbarButton({
 
 function ToolbarSeparator() {
   return <div className="w-px h-5 bg-border mx-1" />
-}
-
-function TemplateSelector() {
-  const [isOpen, setIsOpen] = useState(false)
-  const { currentTemplate, setTemplate } = useEditorStore()
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground rounded hover:bg-accent transition-colors"
-      >
-        <FileText size={14} />
-        <span className="max-w-24 truncate">{currentTemplate.name}</span>
-        <ChevronDown size={12} />
-      </button>
-
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* Dropdown */}
-          <div className="absolute right-0 top-full mt-1 z-20 bg-card border border-border rounded-lg shadow-lg py-1 min-w-48">
-            <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider border-b border-border">
-              Format de page
-            </div>
-            {defaultTemplates.map((template) => (
-              <button
-                key={template.id}
-                onClick={() => {
-                  setTemplate(template.id)
-                  setIsOpen(false)
-                }}
-                className={cn(
-                  'w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors',
-                  currentTemplate.id === template.id && 'bg-accent text-primary'
-                )}
-              >
-                <div className="font-medium">{template.name}</div>
-                <div className="text-xs text-muted-foreground">{template.description}</div>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
 }
 
 function StatsIndicators() {

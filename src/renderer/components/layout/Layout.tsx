@@ -90,50 +90,50 @@ export function Layout() {
                 <button
                   onClick={() => setRightSidebarTab('stats')}
                   className={cn(
-                    'flex-1 h-full flex items-center justify-center gap-1.5 text-sm transition-colors',
+                    'flex-1 h-full flex items-center justify-center transition-colors',
                     rightSidebarTab === 'stats'
-                      ? 'text-foreground border-b-2 border-primary'
+                      ? 'text-foreground border-b-2 border-primary bg-primary/5'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
+                  title="Statistiques"
                 >
-                  <BarChart3 size={14} />
-                  <span>Stats</span>
+                  <BarChart3 size={16} />
                 </button>
                 <button
                   onClick={() => setRightSidebarTab('format')}
                   className={cn(
-                    'flex-1 h-full flex items-center justify-center gap-1.5 text-sm transition-colors',
+                    'flex-1 h-full flex items-center justify-center transition-colors',
                     rightSidebarTab === 'format'
-                      ? 'text-foreground border-b-2 border-primary'
+                      ? 'text-foreground border-b-2 border-primary bg-primary/5'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
+                  title="Format"
                 >
-                  <Type size={14} />
-                  <span>Format</span>
+                  <Type size={16} />
                 </button>
                 <button
                   onClick={() => setRightSidebarTab('analysis')}
                   className={cn(
-                    'flex-1 h-full flex items-center justify-center gap-1.5 text-sm transition-colors',
+                    'flex-1 h-full flex items-center justify-center transition-colors',
                     rightSidebarTab === 'analysis'
-                      ? 'text-foreground border-b-2 border-primary'
+                      ? 'text-foreground border-b-2 border-primary bg-primary/5'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
+                  title="Analyse"
                 >
-                  <Search size={14} />
-                  <span>Analyse</span>
+                  <Search size={16} />
                 </button>
                 <button
                   onClick={() => setRightSidebarTab('ai')}
                   className={cn(
-                    'flex-1 h-full flex items-center justify-center gap-1.5 text-sm transition-colors',
+                    'flex-1 h-full flex items-center justify-center transition-colors',
                     rightSidebarTab === 'ai'
-                      ? 'text-foreground border-b-2 border-primary'
+                      ? 'text-foreground border-b-2 border-primary bg-primary/5'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
+                  title="Assistant IA"
                 >
-                  <Bot size={14} />
-                  <span>IA</span>
+                  <Bot size={16} />
                 </button>
               </div>
               {/* Content */}

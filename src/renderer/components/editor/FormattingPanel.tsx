@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useUIStore } from '@/stores/uiStore'
+import { defaultTemplates } from '@shared/types/templates'
 import {
   Bold,
   Italic,
@@ -69,6 +70,7 @@ export function FormattingPanel() {
   const {
     editor,
     currentTemplate,
+    setTemplate,
     userTypographyOverrides,
     setUserTypographyOverride,
     getEffectiveTypography
@@ -157,6 +159,30 @@ export function FormattingPanel() {
 
   return (
     <div className="p-4 space-y-6">
+      {/* Page Format Section */}
+      <section>
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Format de page
+        </h3>
+        <div className="relative">
+          <select
+            className="w-full px-3 py-2 pr-8 text-sm rounded-lg border border-input bg-background appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary hover:border-primary/50"
+            value={currentTemplate.id}
+            onChange={(e) => setTemplate(e.target.value)}
+          >
+            {defaultTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name} — {template.page.width} × {template.page.height}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          {currentTemplate.description}
+        </p>
+      </section>
+
       {/* Font Section */}
       <section>
         <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
@@ -377,28 +403,6 @@ export function FormattingPanel() {
             onClick={() => setPaperColor('sepia')}
           />
         </div>
-      </section>
-
-      {/* Page Format Section - Locked */}
-      <section>
-        <div className="flex items-center gap-1 mb-3">
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Format de page
-          </h3>
-          <Lock size={10} className="text-muted-foreground" />
-        </div>
-
-        <div className="p-3 rounded-lg border border-border bg-muted/30">
-          <div className="text-sm font-medium mb-1">{currentTemplate.name}</div>
-          <div className="text-xs text-muted-foreground">{currentTemplate.description}</div>
-          <div className="text-xs text-muted-foreground mt-2">
-            Page: {currentTemplate.page.width} × {currentTemplate.page.height}
-          </div>
-        </div>
-
-        <p className="text-xs text-muted-foreground mt-3 italic">
-          Changez le format via le sélecteur dans la barre d'outils.
-        </p>
       </section>
 
       {/* Margins Section */}
