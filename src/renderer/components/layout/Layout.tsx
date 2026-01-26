@@ -8,10 +8,11 @@ import { WelcomeScreen } from './WelcomeScreen'
 import { StatsPanel } from '../stats/StatsPanel'
 import { FormattingPanel } from '../editor/FormattingPanel'
 import { AnalysisPanel } from '../analysis/AnalysisPanel'
+import { AIPanel } from '../ai/AIPanel'
 import { cn } from '@/lib/utils'
-import { BarChart3, Type, Search, X } from 'lucide-react'
+import { BarChart3, Type, Search, Bot, X } from 'lucide-react'
 
-type RightSidebarTab = 'stats' | 'format' | 'analysis'
+type RightSidebarTab = 'stats' | 'format' | 'analysis' | 'ai'
 
 export function Layout() {
   const { sidebarOpen, focusMode, statsSidebarOpen, toggleFocusMode } = useUIStore()
@@ -122,12 +123,25 @@ export function Layout() {
                   <Search size={14} />
                   <span>Analyse</span>
                 </button>
+                <button
+                  onClick={() => setRightSidebarTab('ai')}
+                  className={cn(
+                    'flex-1 h-full flex items-center justify-center gap-1.5 text-sm transition-colors',
+                    rightSidebarTab === 'ai'
+                      ? 'text-foreground border-b-2 border-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Bot size={14} />
+                  <span>IA</span>
+                </button>
               </div>
               {/* Content */}
               <div className="flex-1 overflow-auto">
                 {rightSidebarTab === 'stats' && <StatsPanel />}
                 {rightSidebarTab === 'format' && <FormattingPanel />}
                 {rightSidebarTab === 'analysis' && <AnalysisPanel />}
+                {rightSidebarTab === 'ai' && <AIPanel />}
               </div>
             </>
           )}

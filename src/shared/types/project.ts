@@ -93,6 +93,52 @@ export interface NoteSheet extends SheetBase {
 
 export type Sheet = CharacterSheet | LocationSheet | PlotSheet | NoteSheet
 
+// AI Report types
+export type AIReportType =
+  | 'character-analysis'
+  | 'plot-analysis'
+  | 'editorial-feedback'
+  | 'timeline'
+  | 'consistency-check'
+  | 'translation'
+
+export type AIProvider = 'claude' | 'openai' | 'ollama'
+
+export interface AIReportParams {
+  model: string
+  provider: AIProvider
+  genre?: string
+  market?: string  // 'france' | 'us' | 'uk' | 'quebec'
+  tone?: string    // 'gentle' | 'balanced' | 'demanding'
+  focus?: string[] // ['style', 'structure', 'dialogue', 'rhythm']
+  targetLanguage?: string // For translation reports
+}
+
+export interface AIReport {
+  id: string
+  type: AIReportType
+  title: string
+  createdAt: string
+
+  // Parameters used for generation
+  params: AIReportParams
+
+  // Context sent to AI (for reproducibility, advanced mode)
+  context?: string
+
+  // Links to analyzed entities
+  linkedEntities: Array<{ type: 'character' | 'location' | 'plot' | 'chapter', id: string }>
+
+  // Result content (Markdown)
+  content: string
+
+  // Token usage for cost tracking
+  tokensUsed?: {
+    input: number
+    output: number
+  }
+}
+
 export interface WritingSession {
   id: string
   date: string
@@ -150,4 +196,5 @@ export interface Project {
     notes: NoteSheet[]
   }
   stats: StatsData
+  reports: AIReport[]
 }

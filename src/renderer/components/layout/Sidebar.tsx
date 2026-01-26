@@ -22,10 +22,12 @@ import {
   CheckCircle,
   Clock,
   FileCheck,
-  Map
+  Map,
+  Bot,
+  Sparkles
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ManuscriptItem, LocationSheet, CharacterSheet, PlotSheet } from '@shared/types/project'
+import type { ManuscriptItem, LocationSheet, CharacterSheet, PlotSheet, AIReport } from '@shared/types/project'
 import { useState } from 'react'
 import { GlobalMapView } from '../maps/GlobalMapView'
 import {
@@ -353,6 +355,9 @@ function SheetsPanel() {
     addSheet,
     activeSheetId,
     setActiveSheet,
+    activeReportId,
+    setActiveReport,
+    deleteReport,
     updateSheet,
     deleteSheet,
     duplicateSheet
@@ -619,11 +624,99 @@ function SheetsPanel() {
         </div>
       ))}
 
+      {/* AI Reports Section */}
+      {project.reports.length > 0 && (
+        <>
+          <div className="border-t border-border my-3" />
+          <div>
+            <div className="flex items-center justify-between px-2 mb-1">
+              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <Bot size={14} />
+                <span>Rapports IA</span>
+                <span className="text-[10px]">({project.reports.length})</span>
+              </div>
+            </div>
+
+            <div className="space-y-0.5">
+              {project.reports.map((report) => (
+                <ReportListItem
+                  key={report.id}
+                  report={report}
+                  isActive={activeReportId === report.id}
+                  onSelect={() => setActiveReport(report.id)}
+                  onDelete={() => deleteReport(report.id)}
+                />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Global Map Modal */}
       {showGlobalMap && (
         <GlobalMapView onClose={() => setShowGlobalMap(false)} />
       )}
     </div>
+  )
+}
+
+function ReportListItem({
+  report,
+  isActive,
+  onSelect,
+  onDelete
+}: {
+  report: AIReport
+  isActive: boolean
+  onSelect: () => void
+  onDelete: () => void
+}) {
+  const reportTypeLabels: Record<string, string> = {
+    'character-analysis': 'Personnage',
+    'plot-analysis': 'Intrigue',
+    'editorial-feedback': 'Editorial',
+    'timeline': 'Timeline',
+    'consistency-check': 'Coherence',
+    'translation': 'Traduction'
+  }
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          onClick={onSelect}
+          className={cn(
+            'w-full flex items-center gap-2 pl-6 pr-2 py-1.5 rounded text-sm transition-colors text-left',
+            isActive
+              ? 'bg-primary/10 text-primary'
+              : 'text-foreground hover:bg-accent'
+          )}
+        >
+          <Sparkles size={12} className="text-muted-foreground shrink-0" />
+          <span className="truncate flex-1">{report.title}</span>
+          <span className="text-[10px] text-muted-foreground shrink-0">
+            {formatDate(report.createdAt)}
+          </span>
+        </button>
+      </ContextMenuTrigger>
+
+      <ContextMenuContent className="w-48">
+        <ContextMenuItem disabled>
+          <Bot size={14} className="mr-2" />
+          {reportTypeLabels[report.type] || report.type}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={onDelete} destructive>
+          <Trash2 size={14} className="mr-2" />
+          Supprimer
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

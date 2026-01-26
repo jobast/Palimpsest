@@ -7,6 +7,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import type { Sheet, CharacterSheet, LocationSheet, PlotSheet, NoteSheet } from '@shared/types/project'
 import { Users, MapPin, GitBranch, StickyNote, ArrowLeft } from 'lucide-react'
 import { LocationSheetEditor } from './LocationSheetEditor'
+import { CharacterSheetEditor } from './CharacterSheetEditor'
 
 /**
  * SheetEditor - Editor for character, location, plot, and note sheets
@@ -131,9 +132,13 @@ export function SheetEditor() {
     )
   }
 
-  // Use specialized editor for location sheets
+  // Use specialized editors for specific sheet types
   if (activeSheet.type === 'location') {
     return <LocationSheetEditor sheet={activeSheet as LocationSheet} />
+  }
+
+  if (activeSheet.type === 'character') {
+    return <CharacterSheetEditor sheet={activeSheet as CharacterSheet} />
   }
 
   return (

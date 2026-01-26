@@ -1,5 +1,16 @@
 import { create } from 'zustand'
-import type { Project, ManuscriptItem, Sheet, UserTypographyOverrides } from '@shared/types/project'
+import type { Project, ManuscriptItem, Sheet, UserTypographyOverrides, AIReport } from '@shared/types/project'
+
+// Load reports from disk
+const loadReportsFromDisk = async (projectPath: string): Promise<AIReport[]> => {
+  try {
+    const result = await window.electronAPI.readFile(`${projectPath}/reports/reports.json`)
+    if (result.success && result.content) {
+      return JSON.parse(result.content)
+    }
+  } catch { /* ignore */ }
+  return []
+}
 import { useEditorStore } from './editorStore'
 import { useStatsStore } from './statsStore'
 
@@ -25,6 +36,7 @@ interface ProjectState {
   isDirty: boolean
   activeDocumentId: string | null
   activeSheetId: string | null  // Currently edited sheet (null = editing manuscript)
+  activeReportId: string | null  // Currently viewed report
   recentProjects: RecentProject[]
 
   // Actions
@@ -32,6 +44,7 @@ interface ProjectState {
   updateProject: (updates: Partial<Project>) => void
   setActiveDocument: (id: string | null) => void
   setActiveSheet: (id: string | null) => void
+  setActiveReport: (id: string | null) => void
   setDirty: (dirty: boolean) => void
   addToRecentProjects: (project: RecentProject) => void
   loadRecentProjects: () => void
@@ -49,6 +62,11 @@ interface ProjectState {
   updateSheet: (id: string, updates: Partial<Sheet>) => void
   deleteSheet: (id: string) => void
   duplicateSheet: (id: string) => void
+
+  // Report actions
+  addReport: (report: AIReport) => void
+  updateReport: (id: string, updates: Partial<AIReport>) => void
+  deleteReport: (id: string) => void
 
   // Typography overrides
   updateTypographyOverrides: (overrides: UserTypographyOverrides) => void
@@ -97,7 +115,8 @@ const createEmptyProject = (name: string, author: string, template: string): Pro
     totalWords: 0,
     streak: { current: 0, longest: 0, lastWritingDate: '' },
     manuscriptMode: 'drafting'
-  }
+  },
+  reports: []
 })
 
 // Load recent projects from localStorage
@@ -178,10 +197,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isDirty: false,
   activeDocumentId: null,
   activeSheetId: null,
+  activeReportId: null,
   recentProjects: loadRecentProjectsFromStorage(),
 
   setProject: (project, path) => {
-    set({ project, projectPath: path, isDirty: false, activeSheetId: null })
+    set({ project, projectPath: path, isDirty: false, activeSheetId: null, activeReportId: null })
     localStorage.setItem('lastProjectPath', path)
   },
 
@@ -196,7 +216,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setActiveDocument: (id) => set({ activeDocumentId: id, activeSheetId: null }),
 
-  setActiveSheet: (id) => set({ activeSheetId: id }),
+  setActiveSheet: (id) => set({ activeSheetId: id, activeReportId: null }),
+
+  setActiveReport: (id) => set({ activeReportId: id, activeSheetId: null }),
 
   setDirty: (dirty) => set({ isDirty: dirty }),
 
@@ -248,8 +270,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const sessions = safeJsonParse(sessionsResult.content, [])
       const goals = safeJsonParse(goalsResult.content, [])
 
-      // Load sheets from disk
+      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(projectPath)
+      const reports = await loadReportsFromDisk(projectPath)
 
       const project: Project = {
         meta,
@@ -262,7 +285,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           totalWords: 0,
           streak: { current: 0, longest: 0, lastWritingDate: '' },
           manuscriptMode: 'drafting'
-        }
+        },
+        reports
       }
 
       // Load typography overrides into editor store
@@ -534,6 +558,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     setActiveSheet(newSheet.id)
   },
 
+  addReport: (report) => {
+    const { project } = get()
+    if (!project) return
+
+    set({
+      project: {
+        ...project,
+        reports: [...project.reports, report]
+      },
+      isDirty: true
+    })
+  },
+
+  updateReport: (id, updates) => {
+    const { project } = get()
+    if (!project) return
+
+    set({
+      project: {
+        ...project,
+        reports: project.reports.map(r => r.id === id ? { ...r, ...updates } : r)
+      },
+      isDirty: true
+    })
+  },
+
+  deleteReport: (id) => {
+    const { project, activeReportId } = get()
+    if (!project) return
+
+    set({
+      project: {
+        ...project,
+        reports: project.reports.filter(r => r.id !== id)
+      },
+      activeReportId: activeReportId === id ? null : activeReportId,
+      isDirty: true
+    })
+  },
+
   updateTypographyOverrides: (overrides) => {
     const { project } = get()
     if (!project) return
@@ -596,6 +660,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       await window.electronAPI.createDirectory(`${projectPath}/sheets/plots`)
       await window.electronAPI.createDirectory(`${projectPath}/sheets/custom`)
       await window.electronAPI.createDirectory(`${projectPath}/stats`)
+      await window.electronAPI.createDirectory(`${projectPath}/reports`)
       await window.electronAPI.createDirectory(`${projectPath}/snapshots`)
       await window.electronAPI.createDirectory(`${projectPath}/trash`)
 
@@ -615,6 +680,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       await window.electronAPI.writeFile(
         `${projectPath}/stats/goals.json`,
         JSON.stringify(project.stats.goals, null, 2)
+      )
+      await window.electronAPI.writeFile(
+        `${projectPath}/reports/reports.json`,
+        JSON.stringify(project.reports, null, 2)
       )
 
       set({
@@ -680,8 +749,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const sessions = safeJsonParse(sessionsResult.content, [])
       const goals = safeJsonParse(goalsResult.content, [])
 
-      // Load sheets from disk
+      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(projectPath)
+      const reports = await loadReportsFromDisk(projectPath)
 
       const project: Project = {
         meta,
@@ -694,7 +764,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           totalWords: 0,
           streak: { current: 0, longest: 0, lastWritingDate: '' },
           manuscriptMode: 'drafting'
-        }
+        },
+        reports
       }
 
       // Load typography overrides into editor store
@@ -836,6 +907,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         JSON.stringify(project.sheets.notes, null, 2)
       )
 
+      // Save reports
+      await window.electronAPI.writeFile(
+        `${projectPath}/reports/reports.json`,
+        JSON.stringify(project.reports, null, 2)
+      )
+
       set({ isLoading: false, isSaving: false, isDirty: false })
       useStatsStore.getState().showNotification('success', 'Projet sauvegardé')
     } catch (error) {
@@ -899,8 +976,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const sessions = safeJsonParse(sessionsResult.content, [])
       const goals = safeJsonParse(goalsResult.content, [])
 
-      // Load sheets from disk
+      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(lastPath)
+      const reports = await loadReportsFromDisk(lastPath)
 
       const project: Project = {
         meta,
@@ -913,7 +991,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           totalWords: 0,
           streak: { current: 0, longest: 0, lastWritingDate: '' },
           manuscriptMode: 'drafting'
-        }
+        },
+        reports
       }
 
       // Load typography overrides into editor store

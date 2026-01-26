@@ -18,6 +18,7 @@ import type { WordStatsData } from './extensions'
 import { templateToPaginationOptions } from '@/lib/pagination/paginationPlusAdapter'
 import { PagedEditor } from './PagedEditor'
 import { SheetEditor } from './SheetEditor'
+import { ReportViewer } from './ReportViewer'
 import type { ManuscriptItem } from '@shared/types/project'
 
 // Helper to find a manuscript item by ID (recursive)
@@ -36,7 +37,7 @@ function findManuscriptItem(items: ManuscriptItem[], id: string): ManuscriptItem
  * Editor Area - Main container for the paginated editor
  */
 export function EditorArea() {
-  const { activeDocumentId, activeSheetId, project, setDirty } = useProjectStore()
+  const { activeDocumentId, activeSheetId, activeReportId, project, setDirty } = useProjectStore()
   const {
     setEditor,
     getDocumentContent,
@@ -231,6 +232,11 @@ export function EditorArea() {
 
   if (!project) {
     return null
+  }
+
+  // Show report viewer if a report is active
+  if (activeReportId) {
+    return <ReportViewer />
   }
 
   // Show sheet editor if a sheet is active
