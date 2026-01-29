@@ -121,7 +121,7 @@
   margin: 0;
   text-indent: var(--first-line-indent, 1.5em);
   text-align: justify;
-  hyphens: auto;
+  hyphens: none;
 }
 
 /* First paragraph after headings - no indent */
@@ -353,7 +353,7 @@
   margin: 0;
   text-indent: var(--first-line-indent, 1.5em);
   text-align: justify;
-  hyphens: auto;
+  hyphens: none;
 }
 
 .manuscript-content h1 + p,
@@ -767,3 +767,4 @@
 .rm-page-break .breaker {
   background-color: hsl(var(--paper));
 }
+
