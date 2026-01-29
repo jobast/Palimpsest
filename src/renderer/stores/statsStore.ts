@@ -5,7 +5,8 @@ import type {
   WritingGoal,
   DailyStats,
   StreakInfo,
-  ManuscriptMode
+  ManuscriptMode,
+  StatsData
 } from '@shared/types/project'
 import { calculateStreak, checkGoalReached, getTodayDateString } from '@/lib/stats/calculations'
 
@@ -45,6 +46,11 @@ interface StatsState {
   streak: StreakInfo
   manuscriptMode: ManuscriptMode
   totalWords: number
+  statsDirty: boolean
+
+  // Project context (not persisted)
+  projectId: string | null
+  archiveStorageKey: string
 
   // Current session (not persisted)
   currentSession: CurrentSession
@@ -66,6 +72,11 @@ interface StatsState {
 
   // Actions
   setManuscriptMode: (mode: ManuscriptMode) => void
+  setProjectId: (projectId: string | null) => void
+  loadStats: (stats: StatsData) => void
+  exportStats: () => StatsData
+  resetStats: () => void
+  markStatsSaved: () => void
 
   // Session management
   startSession: (initialWords: number, documentId?: string) => void
@@ -147,6 +158,9 @@ export const useStatsStore = create<StatsState>()(
       streak: defaultStreak,
       manuscriptMode: 'drafting',
       totalWords: 0,
+      statsDirty: false,
+      projectId: null,
+      archiveStorageKey: ARCHIVE_STORAGE_KEY,
       currentSession: { ...defaultCurrentSession },
       pendingNotifications: [],
       selectedDate: null,
@@ -156,7 +170,7 @@ export const useStatsStore = create<StatsState>()(
       _dailyStatsMap: new Map(),
 
       setManuscriptMode: (mode) => {
-        set({ manuscriptMode: mode })
+        set({ manuscriptMode: mode, statsDirty: true })
         // Recalculate daily goal reached status based on new mode
         const state = get()
         const today = getTodayDateString()
@@ -170,11 +184,56 @@ export const useStatsStore = create<StatsState>()(
             if (goalReached !== todayStats.goalReached) {
               const updatedDailyStats = [...state.dailyStats]
               updatedDailyStats[todayIndex] = { ...todayStats, goalReached }
-              set({ dailyStats: updatedDailyStats })
+              set({ dailyStats: updatedDailyStats, statsDirty: true })
             }
           }
         }
       },
+
+      setProjectId: (projectId) => {
+        const archiveStorageKey = projectId
+          ? `${ARCHIVE_STORAGE_KEY}:${projectId}`
+          : ARCHIVE_STORAGE_KEY
+        set({ projectId, archiveStorageKey })
+      },
+
+      loadStats: (stats) => {
+        const dailyStats = stats.dailyStats || []
+        set({
+          sessions: stats.sessions || [],
+          dailyStats,
+          goals: stats.goals || defaultGoals,
+          streak: stats.streak || defaultStreak,
+          manuscriptMode: stats.manuscriptMode || 'drafting',
+          totalWords: stats.totalWords || 0,
+          statsDirty: false,
+          currentSession: { ...defaultCurrentSession },
+          pendingNotifications: [],
+          _dailyStatsMap: buildDailyStatsMap(dailyStats)
+        })
+      },
+
+      exportStats: () => {
+        const { sessions, dailyStats, goals, streak, manuscriptMode, totalWords } = get()
+        return { sessions, dailyStats, goals, streak, manuscriptMode, totalWords }
+      },
+
+      resetStats: () => {
+        set({
+          sessions: [],
+          dailyStats: [],
+          goals: defaultGoals,
+          streak: defaultStreak,
+          manuscriptMode: 'drafting',
+          totalWords: 0,
+          statsDirty: false,
+          currentSession: { ...defaultCurrentSession },
+          pendingNotifications: [],
+          _dailyStatsMap: new Map()
+        })
+      },
+
+      markStatsSaved: () => set({ statsDirty: false }),
 
       startSession: (initialWords, documentId) => {
         const now = new Date()
@@ -302,14 +361,16 @@ export const useStatsStore = create<StatsState>()(
             _dailyStatsMap: updatedMap,
             goals: updatedGoals,
             streak: newStreak,
-            pendingNotifications: notifications
+            pendingNotifications: notifications,
+            statsDirty: true
           })
         } else {
           set({
             dailyStats: updatedDailyStats,
             _dailyStatsMap: updatedMap,
             goals: updatedGoals,
-            pendingNotifications: notifications
+            pendingNotifications: notifications,
+            statsDirty: true
           })
         }
       },
@@ -411,6 +472,7 @@ export const useStatsStore = create<StatsState>()(
           streak: newStreak,
           currentSession: { ...defaultCurrentSession },
           pendingNotifications: notifications,
+          statsDirty: true,
           goals: goals.map(g => {
             if (g.type === 'project') {
               return { ...g, current: newTotalWords }
@@ -435,7 +497,7 @@ export const useStatsStore = create<StatsState>()(
           }
           return g
         })
-        set({ goals: updatedGoals })
+        set({ goals: updatedGoals, statsDirty: true })
 
         // Recalculate daily stats goalReached if daily goal changed
         if (type === 'daily') {
@@ -443,12 +505,12 @@ export const useStatsStore = create<StatsState>()(
             ...d,
             goalReached: checkGoalReached(d, target, manuscriptMode)
           }))
-          set({ dailyStats: updatedDailyStats })
+          set({ dailyStats: updatedDailyStats, statsDirty: true })
 
           // Recalculate streak with new goal threshold
           const newStreak = calculateStreak(updatedDailyStats)
-          set({ streak: newStreak })
-        }
+          set({ streak: newStreak, statsDirty: true })
+      }
       },
 
       resetDailyGoal: () => {
@@ -456,14 +518,15 @@ export const useStatsStore = create<StatsState>()(
         set({
           goals: goals.map(g =>
             g.type === 'daily' ? { ...g, current: 0 } : g
-          )
+          ),
+          statsDirty: true
         })
       },
 
       recalculateStreak: () => {
         const { dailyStats } = get()
         const newStreak = calculateStreak(dailyStats)
-        set({ streak: newStreak })
+        set({ streak: newStreak, statsDirty: true })
       },
 
       getTodayStats: () => {
@@ -517,14 +580,14 @@ export const useStatsStore = create<StatsState>()(
 
         // Only update if streak has changed
         if (newStreak.current !== streak.current || newStreak.longest !== streak.longest) {
-          set({ streak: newStreak })
+          set({ streak: newStreak, statsDirty: true })
         }
       },
 
       // Archive old session data to reduce memory usage
       // Keeps last MAX_SESSIONS_DAYS (90 days) in active memory
       archiveOldData: () => {
-        const { sessions, dailyStats } = get()
+        const { sessions, dailyStats, archiveStorageKey } = get()
 
         // Calculate cutoff date
         const cutoffDate = new Date()
@@ -558,7 +621,7 @@ export const useStatsStore = create<StatsState>()(
         // Save archive to localStorage
         try {
           const archive = { sessions: mergedSessions, dailyStats: mergedDailyStats }
-          localStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archive))
+          localStorage.setItem(archiveStorageKey, JSON.stringify(archive))
         } catch (error) {
           console.error('Failed to archive stats:', error)
           // Don't update state if archive failed
@@ -570,7 +633,8 @@ export const useStatsStore = create<StatsState>()(
         set({
           sessions: recentSessions,
           dailyStats: recentDailyStats,
-          _dailyStatsMap: newMap
+          _dailyStatsMap: newMap,
+          statsDirty: true
         })
 
         return {
@@ -581,8 +645,9 @@ export const useStatsStore = create<StatsState>()(
 
       // Retrieve archived stats (for historical analysis)
       getArchivedStats: () => {
+        const { archiveStorageKey } = get()
         try {
-          const archived = localStorage.getItem(ARCHIVE_STORAGE_KEY)
+          const archived = localStorage.getItem(archiveStorageKey)
           if (!archived) return null
           return JSON.parse(archived) as { sessions: WritingSession[]; dailyStats: DailyStats[] }
         } catch (error) {

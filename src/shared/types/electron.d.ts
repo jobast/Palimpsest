@@ -20,11 +20,59 @@ export interface SaveDialogResult {
   filePath?: string
 }
 
-export type MenuAction = 'new-project' | 'open-project' | 'save-project' | 'toggle-focus-mode'
+export type MenuAction =
+  | 'new-project'
+  | 'open-project'
+  | 'save-project'
+  | 'toggle-focus-mode'
+  | 'export-docx'
+  | 'export-pdf'
 
 export interface SpellCheckContext {
   misspelledWord: string
   suggestions: string[]
+}
+
+export interface PrintToPDFOptions {
+  pageWidth: number // in microns
+  pageHeight: number // in microns
+  margins: { top: number; bottom: number; left: number; right: number } // in microns
+}
+
+export interface PrintToPDFResult {
+  success: boolean
+  data?: Buffer
+  error?: string
+}
+
+export interface SavePDFResult {
+  success: boolean
+  filePath?: string
+  error?: string
+}
+
+export interface AIKeyStatus {
+  encryptionAvailable: boolean
+  hasClaudeKey: boolean
+  hasOpenaiKey: boolean
+  claudeKeyHint: string | null
+  openaiKeyHint: string | null
+}
+
+export interface AIChatRequest {
+  provider: 'claude' | 'openai' | 'ollama'
+  model: string
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+  maxTokens?: number
+  temperature?: number
+  systemPrompt?: string
+  ollamaConfig?: { endpoint: string; model: string }
+}
+
+export interface AIChatResponse {
+  content: string
+  tokensUsed: { input: number; output: number }
+  model: string
 }
 
 export interface ElectronAPI {
@@ -43,6 +91,14 @@ export interface ElectronAPI {
   replaceMisspelling: (word: string) => Promise<boolean>
   onSpellCheckContext: (callback: (data: SpellCheckContext) => void) => void
   removeSpellCheckListener: () => void
+  // PDF Export
+  printToPDF: (options: PrintToPDFOptions) => Promise<PrintToPDFResult>
+  savePDF: (data: Buffer, defaultFilename: string) => Promise<SavePDFResult>
+  // AI
+  aiGetKeyStatus: () => Promise<AIKeyStatus>
+  aiSetApiKey: (provider: 'claude' | 'openai', key: string) => Promise<{ success: boolean }>
+  aiClearApiKey: (provider: 'claude' | 'openai') => Promise<{ success: boolean }>
+  aiChat: (request: AIChatRequest) => Promise<AIChatResponse>
 }
 
 declare global {

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useProjectStore } from './stores/projectStore'
 import { useUIStore } from './stores/uiStore'
+import { useStatsStore } from './stores/statsStore'
 import { useExport } from './hooks/useExport'
 import { Layout } from './components/layout/Layout'
 import { ToastContainer } from './components/notifications/ToastContainer'
@@ -13,6 +14,7 @@ function App() {
   const openProject = useProjectStore(state => state.openProject)
   const saveProject = useProjectStore(state => state.saveProject)
   const isDirty = useProjectStore(state => state.isDirty)
+  const statsDirty = useStatsStore(state => state.statsDirty)
   const project = useProjectStore(state => state.project)
   const toggleFocusMode = useUIStore(state => state.toggleFocusMode)
   const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled)
@@ -66,7 +68,7 @@ function App() {
     }
 
     autoSaveTimerRef.current = window.setInterval(() => {
-      if (isDirty) {
+      if (isDirty || statsDirty) {
         saveProject()
       }
     }, autoSaveInterval * 1000)
@@ -76,7 +78,7 @@ function App() {
         window.clearInterval(autoSaveTimerRef.current)
       }
     }
-  }, [autoSaveEnabled, autoSaveInterval, project, isDirty, saveProject])
+  }, [autoSaveEnabled, autoSaveInterval, project, isDirty, statsDirty, saveProject])
 
   // Menu action handler - uses refs to avoid re-registering listeners
   const handleMenuAction = useCallback((action: string) => {

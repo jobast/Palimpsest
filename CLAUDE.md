@@ -50,3 +50,44 @@ npm run preview  # Preview Electron
 - Interface en **français**
 - Commits en anglais
 - Pas de fichiers doc sauf si demandé explicitement
+
+## tiptap-pagination-plus
+
+Extension TipTap pour la pagination visuelle. Structure DOM :
+
+```html
+<div class="ProseMirror rm-with-pagination">
+  <div class="rm-page-break">           <!-- Container par page -->
+    <div class="page">                   <!-- Zone de contenu (float!) -->
+      <!-- Contenu texte ici -->
+    </div>
+    <div class="breaker">                <!-- Séparateur entre pages -->
+      <div class="rm-page-footer">       <!-- Pied de page -->
+      <div class="rm-pagination-gap">    <!-- Espace visuel -->
+      <div class="rm-page-header">       <!-- En-tête page suivante -->
+    </div>
+  </div>
+  <!-- ... autres .rm-page-break -->
+</div>
+```
+
+**Important** :
+- `.page` utilise `float`, donc `.rm-page-break` a **height: 0** (collapsed)
+- Pour obtenir les dimensions réelles, utiliser `.page` avec `offsetWidth`/`offsetHeight`
+- Les couleurs utilisent des CSS variables (`hsl(var(--paper))`) → problèmes avec html2canvas
+
+## Virtualisation (documents longs)
+
+Pour les documents > 10 pages, `PagedEditor.tsx` utilise `content-visibility: hidden` sur les pages hors écran.
+
+- État `isExportingPdf` dans `uiStore` pour désactiver la virtualisation pendant l'export
+- Toujours forcer `contentVisibility = 'visible'` avant capture
+
+## Export PDF
+
+Utilise html2canvas + jsPDF (`src/renderer/lib/export/pdfExporter.ts`).
+
+**Défis connus** :
+- html2canvas ne résout pas les CSS variables → forcer `color: #000` dans `onclone`
+- Les éléments floatés ont height: 0 via `getBoundingClientRect()` → utiliser `offsetHeight`
+- Désactiver virtualisation + reset zoom à 100% avant capture

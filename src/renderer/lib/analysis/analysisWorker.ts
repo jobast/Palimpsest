@@ -56,6 +56,7 @@ type WorkerResponse = ResultMessage | ErrorMessage | ProgressMessage
 
 // Track active analysis tasks for cancellation
 const activeTasks = new Set<string>()
+const cancelledTasks = new Set<string>()
 
 /**
  * Post a progress update to the main thread
@@ -69,7 +70,7 @@ function postProgress(id: string, step: string, progress: number) {
  * Check if a task has been cancelled
  */
 function isCancelled(id: string): boolean {
-  return !activeTasks.has(id)
+  return cancelledTasks.has(id)
 }
 
 /**
@@ -170,7 +171,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
   const message = event.data
 
   if (message.type === 'cancel') {
-    activeTasks.delete(message.id)
+    cancelledTasks.add(message.id)
     return
   }
 
@@ -200,6 +201,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       }
     } finally {
       activeTasks.delete(id)
+      cancelledTasks.delete(id)
     }
   }
 }

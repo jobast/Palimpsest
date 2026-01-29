@@ -13,7 +13,7 @@ import { useProjectStore } from '@/stores/projectStore'
 import { useStatsStore } from '@/stores/statsStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
 import { useWritingTimer } from '@/hooks/useWritingTimer'
-import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, TextAnalysisDecorations } from './extensions'
+import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, TextAnalysisDecorations, FrenchSpaces } from './extensions'
 import type { WordStatsData } from './extensions'
 import { templateToPaginationOptions } from '@/lib/pagination/paginationPlusAdapter'
 import { PagedEditor } from './PagedEditor'
@@ -110,7 +110,8 @@ export function EditorArea() {
       ChapterTitle,
       FirstParagraph,
       PaginationPlus.configure(paginationOptions),
-      TextAnalysisDecorations
+      TextAnalysisDecorations,
+      FrenchSpaces
     ],
     content: '',
     editorProps: {

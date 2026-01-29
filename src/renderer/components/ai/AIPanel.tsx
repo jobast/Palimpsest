@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { useAIStore } from '@/stores/aiStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -45,10 +45,14 @@ interface AIAction {
 
 export function AIPanel() {
   const { project, activeSheetId, activeDocumentId, activeReportId, setActiveReport } = useProjectStore()
-  const { hasValidApiKey, getModelInfo, isLoading, sessionUsage, formatCost, resetSessionUsage, selectedProvider } = useAIStore()
+  const { hasValidApiKey, getModelInfo, isLoading, sessionUsage, formatCost, resetSessionUsage, selectedProvider, refreshKeyStatus } = useAIStore()
   const { openSettings } = useUIStore()
   const [runningAction, setRunningAction] = useState<string | null>(null)
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null)
+
+  useEffect(() => {
+    refreshKeyStatus()
+  }, [refreshKeyStatus])
 
   // Determine current context
   const context = useMemo(() => {

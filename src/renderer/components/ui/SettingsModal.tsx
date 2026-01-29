@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useUIStore } from '@/stores/uiStore'
 import { useAIStore, AI_MODELS } from '@/stores/aiStore'
 import { X, Sun, Moon, Monitor, Save, Bot, Eye, EyeOff, CheckCircle, AlertCircle, Server } from 'lucide-react'
@@ -246,6 +246,11 @@ function AISettingsSection() {
   const {
     claudeApiKey,
     openaiApiKey,
+    hasClaudeKey,
+    hasOpenaiKey,
+    claudeKeyHint,
+    openaiKeyHint,
+    encryptionAvailable,
     ollamaEndpoint,
     ollamaModel,
     selectedProvider,
@@ -253,6 +258,11 @@ function AISettingsSection() {
     advancedMode,
     setClaudeApiKey,
     setOpenaiApiKey,
+    saveClaudeApiKey,
+    saveOpenaiApiKey,
+    clearClaudeApiKey,
+    clearOpenaiApiKey,
+    refreshKeyStatus,
     setOllamaEndpoint,
     setOllamaModel,
     setSelectedModel,
@@ -269,6 +279,10 @@ function AISettingsSection() {
 
   const isClaudeKeyValid = claudeApiKey.startsWith('sk-ant-')
   const isOpenaiKeyValid = openaiApiKey.startsWith('sk-')
+
+  useEffect(() => {
+    refreshKeyStatus()
+  }, [refreshKeyStatus])
 
   // Check Ollama connection
   const checkOllamaConnection = async () => {
@@ -291,15 +305,20 @@ function AISettingsSection() {
       <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
         <p className="text-xs text-muted-foreground">
           <strong>BYOK</strong> (Bring Your Own Key) : Entrez vos cles API pour utiliser les fonctionnalites IA.
-          Vos cles sont stockees localement et ne sont jamais partagees.
+          Vos cles sont stockees localement dans l'application et ne sont jamais partagees.
         </p>
+        {!encryptionAvailable && (
+          <p className="mt-1 text-xs text-destructive">
+            Chiffrement indisponible sur ce systeme. Les cles seront stockees sans chiffrement.
+          </p>
+        )}
       </div>
 
       {/* Claude API Key */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="text-sm font-medium">Cle API Claude (Anthropic)</label>
-          {claudeApiKey && (
+          {claudeApiKey ? (
             isClaudeKeyValid ? (
               <span className="flex items-center gap-1 text-xs text-green-600">
                 <CheckCircle size={12} />
@@ -311,13 +330,29 @@ function AISettingsSection() {
                 Format invalide
               </span>
             )
-          )}
+          ) : hasClaudeKey ? (
+            <span className="flex items-center gap-1 text-xs text-green-600">
+              <CheckCircle size={12} />
+              Enregistree {claudeKeyHint ? `(${claudeKeyHint})` : ''}
+            </span>
+          ) : null}
         </div>
         <div className="relative">
           <input
             type={showClaudeKey ? 'text' : 'password'}
             value={claudeApiKey}
             onChange={(e) => setClaudeApiKey(e.target.value)}
+            onBlur={() => {
+              if (claudeApiKey.trim()) {
+                saveClaudeApiKey()
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && claudeApiKey.trim()) {
+                e.currentTarget.blur()
+                saveClaudeApiKey()
+              }
+            }}
             placeholder="sk-ant-..."
             className="w-full px-3 py-2 pr-10 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
@@ -329,6 +364,15 @@ function AISettingsSection() {
             {showClaudeKey ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
+        {hasClaudeKey && (
+          <button
+            type="button"
+            onClick={clearClaudeApiKey}
+            className="mt-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Supprimer la cle
+          </button>
+        )}
         <p className="mt-1 text-xs text-muted-foreground">
           Obtenez votre cle sur{' '}
           <a
@@ -346,7 +390,7 @@ function AISettingsSection() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="text-sm font-medium">Cle API OpenAI</label>
-          {openaiApiKey && (
+          {openaiApiKey ? (
             isOpenaiKeyValid ? (
               <span className="flex items-center gap-1 text-xs text-green-600">
                 <CheckCircle size={12} />
@@ -358,13 +402,29 @@ function AISettingsSection() {
                 Format invalide
               </span>
             )
-          )}
+          ) : hasOpenaiKey ? (
+            <span className="flex items-center gap-1 text-xs text-green-600">
+              <CheckCircle size={12} />
+              Enregistree {openaiKeyHint ? `(${openaiKeyHint})` : ''}
+            </span>
+          ) : null}
         </div>
         <div className="relative">
           <input
             type={showOpenaiKey ? 'text' : 'password'}
             value={openaiApiKey}
             onChange={(e) => setOpenaiApiKey(e.target.value)}
+            onBlur={() => {
+              if (openaiApiKey.trim()) {
+                saveOpenaiApiKey()
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && openaiApiKey.trim()) {
+                e.currentTarget.blur()
+                saveOpenaiApiKey()
+              }
+            }}
             placeholder="sk-..."
             className="w-full px-3 py-2 pr-10 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
@@ -376,6 +436,15 @@ function AISettingsSection() {
             {showOpenaiKey ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
+        {hasOpenaiKey && (
+          <button
+            type="button"
+            onClick={clearOpenaiApiKey}
+            className="mt-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Supprimer la cle
+          </button>
+        )}
         <p className="mt-1 text-xs text-muted-foreground">
           Obtenez votre cle sur{' '}
           <a
@@ -458,14 +527,14 @@ function AISettingsSection() {
         >
           <optgroup label="Claude (Anthropic)">
             {claudeModels.map(model => (
-              <option key={model.id} value={model.id} disabled={!isClaudeKeyValid}>
+              <option key={model.id} value={model.id} disabled={!hasClaudeKey && !isClaudeKeyValid}>
                 {model.name} (${model.inputCost}/$1M in, ${model.outputCost}/$1M out)
               </option>
             ))}
           </optgroup>
           <optgroup label="GPT (OpenAI)">
             {openaiModels.map(model => (
-              <option key={model.id} value={model.id} disabled={!isOpenaiKeyValid}>
+              <option key={model.id} value={model.id} disabled={!hasOpenaiKey && !isOpenaiKeyValid}>
                 {model.name} (${model.inputCost}/$1M in, ${model.outputCost}/$1M out)
               </option>
             ))}
@@ -503,4 +572,3 @@ function AISettingsSection() {
     </div>
   )
 }
-

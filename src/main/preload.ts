@@ -43,5 +43,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     actions.forEach(action => {
       ipcRenderer.removeAllListeners(`menu:${action}`)
     })
-  }
+  },
+
+  // PDF Export
+  printToPDF: (options: {
+    pageWidth: number
+    pageHeight: number
+    margins: { top: number; bottom: number; left: number; right: number }
+  }) => ipcRenderer.invoke('export:printToPDF', options),
+
+  savePDF: (data: Buffer, defaultFilename: string) =>
+    ipcRenderer.invoke('export:savePDF', data, defaultFilename),
+
+  // AI key management + chat
+  aiGetKeyStatus: () => ipcRenderer.invoke('ai:getKeyStatus'),
+  aiSetApiKey: (provider: 'claude' | 'openai', key: string) =>
+    ipcRenderer.invoke('ai:setApiKey', { provider, key }),
+  aiClearApiKey: (provider: 'claude' | 'openai') =>
+    ipcRenderer.invoke('ai:clearApiKey', { provider }),
+  aiChat: (request: {
+    provider: 'claude' | 'openai' | 'ollama'
+    model: string
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+    maxTokens?: number
+    temperature?: number
+    systemPrompt?: string
+    ollamaConfig?: { endpoint: string; model: string }
+  }) => ipcRenderer.invoke('ai:chat', request)
 })

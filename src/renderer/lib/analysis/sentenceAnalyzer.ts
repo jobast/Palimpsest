@@ -8,6 +8,7 @@ import { countWords, ABBREVIATION_REGEX } from './frenchNLP'
  */
 export function segmentSentences(text: string, baseOffset: number = 0): SentenceData[] {
   const sentences: SentenceData[] = []
+  let searchIndex = 0
 
   // Replace abbreviations with placeholders to avoid false sentence breaks
   const placeholderMap = new Map<string, string>()
@@ -34,9 +35,14 @@ export function segmentSentences(text: string, baseOffset: number = 0): Sentence
     sentenceText = sentenceText.trim()
 
     if (sentenceText.length > 0) {
-      // Calculate actual position in original text
-      const from = baseOffset + findOriginalPosition(text, processedText, match.index)
+      // Calculate actual position in original text by forward search
+      const foundIndex = text.indexOf(sentenceText, searchIndex)
+      const from = foundIndex >= 0 ? baseOffset + foundIndex : baseOffset + match.index
       const to = from + sentenceText.length
+
+      if (foundIndex >= 0) {
+        searchIndex = foundIndex + sentenceText.length
+      }
 
       sentences.push({
         text: sentenceText,
@@ -50,15 +56,6 @@ export function segmentSentences(text: string, baseOffset: number = 0): Sentence
   }
 
   return sentences
-}
-
-/**
- * Find the original position accounting for placeholder replacements
- */
-function findOriginalPosition(_original: string, _processed: string, processedIndex: number): number {
-  // For simplicity, since placeholders have similar length to abbreviations,
-  // the position difference is minimal. For more accuracy, we'd need to track offsets.
-  return processedIndex
 }
 
 /**

@@ -17,6 +17,25 @@ import { useProjectStore } from '@/stores/projectStore'
 import type { AnalysisIssue } from '@/lib/analysis/types'
 import { cn } from '@/lib/utils'
 
+function textOffsetToDocPos(doc: { descendants: (f: (node: any, pos: number) => boolean) => void; content: { size: number } }, offset: number): number {
+  let acc = 0
+  let mapped: number | null = null
+
+  doc.descendants((node: any, pos: number) => {
+    if (!node.isText || !node.text) return true
+    const text = node.text as string
+    const nextAcc = acc + text.length
+    if (offset <= nextAcc) {
+      mapped = pos + Math.max(0, offset - acc)
+      return false
+    }
+    acc = nextAcc
+    return true
+  })
+
+  return mapped ?? doc.content.size
+}
+
 /**
  * AnalysisPanel - Simplified text analysis panel
  *
@@ -45,7 +64,7 @@ export function AnalysisPanel() {
 
   const handleAnalyze = async () => {
     if (!editor || !activeDocumentId) return
-    const text = editor.getText()
+    const text = editor.state.doc.textContent
     await runAnalysis(text, activeDocumentId)
   }
 
@@ -53,12 +72,13 @@ export function AnalysisPanel() {
     selectIssue(issue.id)
 
     if (editor) {
-      editor.commands.setTextSelection(issue.from)
+      const mappedFrom = textOffsetToDocPos(editor.state.doc, issue.from)
+      editor.commands.setTextSelection(mappedFrom)
       editor.commands.focus()
 
       setTimeout(() => {
         const { view } = editor
-        const coords = view.coordsAtPos(issue.from)
+        const coords = view.coordsAtPos(mappedFrom)
         const editorElement = view.dom.closest('.ProseMirror')
         const scrollContainer = editorElement?.closest('.overflow-auto') || editorElement?.parentElement
 

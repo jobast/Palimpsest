@@ -42,9 +42,16 @@ interface SessionUsage {
 }
 
 interface AIState {
-  // API Keys (stored securely)
+  // API Keys (input only, stored securely in main)
   claudeApiKey: string
   openaiApiKey: string
+  hasClaudeKey: boolean
+  hasOpenaiKey: boolean
+  claudeKeyHint: string | null
+  openaiKeyHint: string | null
+  encryptionAvailable: boolean
+
+  // Ollama settings
   ollamaEndpoint: string  // URL for Ollama API (default: http://localhost:11434)
   ollamaModel: string     // Selected Ollama model name
 
@@ -65,6 +72,11 @@ interface AIState {
   // Actions
   setClaudeApiKey: (key: string) => void
   setOpenaiApiKey: (key: string) => void
+  saveClaudeApiKey: () => Promise<void>
+  saveOpenaiApiKey: () => Promise<void>
+  clearClaudeApiKey: () => Promise<void>
+  clearOpenaiApiKey: () => Promise<void>
+  refreshKeyStatus: () => Promise<void>
   setOllamaEndpoint: (endpoint: string) => void
   setOllamaModel: (model: string) => void
   setSelectedProvider: (provider: AIProvider) => void
@@ -98,6 +110,11 @@ export const useAIStore = create<AIState>()(
       // Initial state
       claudeApiKey: '',
       openaiApiKey: '',
+      hasClaudeKey: false,
+      hasOpenaiKey: false,
+      claudeKeyHint: null,
+      openaiKeyHint: null,
+      encryptionAvailable: true,
       ollamaEndpoint: 'http://localhost:11434',
       ollamaModel: 'qwen2.5:72b',
       selectedProvider: 'claude',
@@ -110,6 +127,69 @@ export const useAIStore = create<AIState>()(
       // Setters
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setOpenaiApiKey: (key) => set({ openaiApiKey: key }),
+
+      saveClaudeApiKey: async () => {
+        const { claudeApiKey } = get()
+        if (!claudeApiKey.trim()) return
+        if (!window?.electronAPI?.aiSetApiKey) return
+        try {
+          await window.electronAPI.aiSetApiKey('claude', claudeApiKey.trim())
+          set({ claudeApiKey: '' })
+          await get().refreshKeyStatus()
+        } catch (error) {
+          set({ lastError: error instanceof Error ? error.message : 'Erreur inconnue' })
+        }
+      },
+
+      saveOpenaiApiKey: async () => {
+        const { openaiApiKey } = get()
+        if (!openaiApiKey.trim()) return
+        if (!window?.electronAPI?.aiSetApiKey) return
+        try {
+          await window.electronAPI.aiSetApiKey('openai', openaiApiKey.trim())
+          set({ openaiApiKey: '' })
+          await get().refreshKeyStatus()
+        } catch (error) {
+          set({ lastError: error instanceof Error ? error.message : 'Erreur inconnue' })
+        }
+      },
+
+      clearClaudeApiKey: async () => {
+        if (!window?.electronAPI?.aiClearApiKey) return
+        try {
+          await window.electronAPI.aiClearApiKey('claude')
+          await get().refreshKeyStatus()
+        } catch (error) {
+          set({ lastError: error instanceof Error ? error.message : 'Erreur inconnue' })
+        }
+      },
+
+      clearOpenaiApiKey: async () => {
+        if (!window?.electronAPI?.aiClearApiKey) return
+        try {
+          await window.electronAPI.aiClearApiKey('openai')
+          await get().refreshKeyStatus()
+        } catch (error) {
+          set({ lastError: error instanceof Error ? error.message : 'Erreur inconnue' })
+        }
+      },
+
+      refreshKeyStatus: async () => {
+        if (!window?.electronAPI?.aiGetKeyStatus) return
+        try {
+          const status = await window.electronAPI.aiGetKeyStatus()
+          set({
+            hasClaudeKey: status.hasClaudeKey,
+            hasOpenaiKey: status.hasOpenaiKey,
+            claudeKeyHint: status.claudeKeyHint,
+            openaiKeyHint: status.openaiKeyHint,
+            encryptionAvailable: status.encryptionAvailable
+          })
+        } catch {
+          // Ignore key status errors (e.g., IPC unavailable)
+        }
+      },
+
       setOllamaEndpoint: (endpoint) => set({ ollamaEndpoint: endpoint }),
       setOllamaModel: (model) => set({ ollamaModel: model }),
 
@@ -160,11 +240,11 @@ export const useAIStore = create<AIState>()(
 
       // Helpers
       hasValidApiKey: () => {
-        const { selectedProvider, claudeApiKey, openaiApiKey, ollamaEndpoint } = get()
+        const { selectedProvider, hasClaudeKey, hasOpenaiKey, ollamaEndpoint } = get()
         if (selectedProvider === 'claude') {
-          return claudeApiKey.startsWith('sk-ant-')
+          return hasClaudeKey
         } else if (selectedProvider === 'openai') {
-          return openaiApiKey.startsWith('sk-')
+          return hasOpenaiKey
         } else {
           // Ollama just needs a valid endpoint
           return ollamaEndpoint.length > 0
@@ -172,8 +252,8 @@ export const useAIStore = create<AIState>()(
       },
 
       getActiveApiKey: () => {
-        const { selectedProvider, claudeApiKey, openaiApiKey } = get()
-        return selectedProvider === 'claude' ? claudeApiKey : openaiApiKey
+        // Keys are stored in main; renderer never needs the raw value.
+        return ''
       },
 
       getModelInfo: () => {
@@ -196,8 +276,6 @@ export const useAIStore = create<AIState>()(
     {
       name: 'palimpseste-ai-settings',
       partialize: (state) => ({
-        claudeApiKey: state.claudeApiKey,
-        openaiApiKey: state.openaiApiKey,
         ollamaEndpoint: state.ollamaEndpoint,
         ollamaModel: state.ollamaModel,
         selectedProvider: state.selectedProvider,

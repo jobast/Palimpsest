@@ -17,7 +17,7 @@ const textAnalysisPluginKey = new PluginKey('textAnalysisDecorations')
  */
 interface WordPositionCache {
   positions: Map<string, Array<{ from: number; to: number }>>
-  docVersion: number // Track document version to invalidate cache
+  doc: ProseMirrorNode // Track current doc reference to invalidate cache
 }
 
 // Module-level cache (shared across plugin calls)
@@ -83,15 +83,15 @@ function buildWordPositionCache(doc: ProseMirrorNode): Map<string, Array<{ from:
  * Get or build the word position cache for a document
  * Cache is invalidated when document version changes
  */
-function getWordPositionCache(doc: ProseMirrorNode, docVersion: number): Map<string, Array<{ from: number; to: number }>> {
-  // Check if cache is valid for current document version
-  if (wordPositionCache && wordPositionCache.docVersion === docVersion) {
+function getWordPositionCache(doc: ProseMirrorNode): Map<string, Array<{ from: number; to: number }>> {
+  // Check if cache is valid for current document reference
+  if (wordPositionCache && wordPositionCache.doc === doc) {
     return wordPositionCache.positions
   }
 
   // Build new cache
   const positions = buildWordPositionCache(doc)
-  wordPositionCache = { positions, docVersion }
+  wordPositionCache = { positions, doc }
 
   return positions
 }
@@ -146,10 +146,7 @@ export const TextAnalysisDecorations = Extension.create<TextAnalysisDecorationsO
             const doc = state.doc
 
             // Get or build word position cache - O(n) first time, O(1) subsequent
-            // Use a combination of doc size and content hash as version
-            // For simplicity, use transaction count which changes on each edit
-            const docVersion = (state as any).tr?.time || Date.now()
-            const wordCache = getWordPositionCache(doc, docVersion)
+            const wordCache = getWordPositionCache(doc)
 
             // REPETITIONS MODE
             if (activeMode === 'repetitions') {
