@@ -1,5 +1,20 @@
 import { create } from 'zustand'
-import type { Project, ManuscriptItem, Sheet, UserTypographyOverrides, AIReport } from '@shared/types/project'
+import type {
+  Project,
+  ManuscriptItem,
+  Sheet,
+  UserTypographyOverrides,
+  AIReport,
+  WritingGoal,
+  ManuscriptMode,
+  StreakInfo,
+  DailyStats,
+  StatsData
+} from '@shared/types/project'
+import { aggregateDailyStats } from '@/lib/stats/aggregations'
+import { calculateStreak } from '@/lib/stats/calculations'
+import { useEditorStore } from './editorStore'
+import { useStatsStore } from './statsStore'
 
 // Load reports from disk
 const loadReportsFromDisk = async (projectPath: string): Promise<AIReport[]> => {
@@ -11,8 +26,56 @@ const loadReportsFromDisk = async (projectPath: string): Promise<AIReport[]> => 
   } catch { /* ignore */ }
   return []
 }
-import { useEditorStore } from './editorStore'
-import { useStatsStore } from './statsStore'
+
+const loadStatsFromDisk = async (projectPath: string): Promise<StatsData> => {
+  const sessionsResult = await window.electronAPI.readFile(`${projectPath}/stats/sessions.json`)
+  const goalsResult = await window.electronAPI.readFile(`${projectPath}/stats/goals.json`)
+  const summaryResult = await window.electronAPI.readFile(`${projectPath}/stats/stats.json`)
+
+  const sessions = safeJsonParse(sessionsResult.content, [])
+  const defaultGoals: WritingGoal[] = [
+    { type: 'daily', target: 0, current: 0 },
+    { type: 'project', target: 0, current: 0 }
+  ]
+  const goals = safeJsonParse<WritingGoal[]>(goalsResult.content, defaultGoals)
+
+  const summary = safeJsonParse<{
+    dailyStats: DailyStats[]
+    totalWords: number
+    streak: StreakInfo
+    manuscriptMode: ManuscriptMode
+  }>(summaryResult.content, {
+    dailyStats: [],
+    totalWords: 0,
+    streak: { current: 0, longest: 0, lastWritingDate: '' },
+    manuscriptMode: 'drafting'
+  })
+
+  const manuscriptMode: ManuscriptMode = summary.manuscriptMode || 'drafting'
+  const dailyGoal = goals.find((g: { type: string }) => g.type === 'daily')
+  const dailyTarget = dailyGoal?.target ?? 0
+
+  const dailyStats = (summary.dailyStats && summary.dailyStats.length > 0)
+    ? summary.dailyStats
+    : aggregateDailyStats(sessions, dailyTarget, manuscriptMode)
+
+  const totalWords = typeof summary.totalWords === 'number'
+    ? summary.totalWords
+    : sessions.reduce((sum: number, s: { netWords: number }) => sum + s.netWords, 0)
+
+  const streak = summary.streak?.current !== undefined
+    ? summary.streak
+    : calculateStreak(dailyStats)
+
+  return {
+    sessions,
+    dailyStats,
+    goals,
+    totalWords,
+    streak,
+    manuscriptMode
+  }
+}
 
 // Check if running in Electron
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
@@ -34,6 +97,7 @@ interface ProjectState {
   isLoading: boolean
   isSaving: boolean  // Prevent concurrent saves
   isDirty: boolean
+  lastDirtyAt: number
   activeDocumentId: string | null
   activeSheetId: string | null  // Currently edited sheet (null = editing manuscript)
   activeReportId: string | null  // Currently viewed report
@@ -195,13 +259,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isLoading: false,
   isSaving: false,
   isDirty: false,
+  lastDirtyAt: 0,
   activeDocumentId: null,
   activeSheetId: null,
   activeReportId: null,
   recentProjects: loadRecentProjectsFromStorage(),
 
   setProject: (project, path) => {
-    set({ project, projectPath: path, isDirty: false, activeSheetId: null, activeReportId: null })
+    set({ project, projectPath: path, isDirty: false, lastDirtyAt: 0, activeSheetId: null, activeReportId: null })
     localStorage.setItem('lastProjectPath', path)
   },
 
@@ -210,7 +275,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!project) return
     set({
       project: { ...project, ...updates },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -220,7 +285,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setActiveReport: (id) => set({ activeReportId: id, activeSheetId: null }),
 
-  setDirty: (dirty) => set({ isDirty: dirty }),
+  setDirty: (dirty) => set((state) => ({
+    isDirty: dirty,
+    lastDirtyAt: dirty ? Date.now() : state.lastDirtyAt
+  })),
 
   addToRecentProjects: (recentProject) => {
     const { recentProjects } = get()
@@ -255,8 +323,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
       const structureResult = await window.electronAPI.readFile(`${projectPath}/manuscript/structure.json`)
-      const sessionsResult = await window.electronAPI.readFile(`${projectPath}/stats/sessions.json`)
-      const goalsResult = await window.electronAPI.readFile(`${projectPath}/stats/goals.json`)
 
       if (!metaResult.success || !metaResult.content) {
         throw new Error('Impossible de lire project.json')
@@ -267,8 +333,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       const meta = JSON.parse(metaResult.content)
       const manuscript = JSON.parse(structureResult.content)
-      const sessions = safeJsonParse(sessionsResult.content, [])
-      const goals = safeJsonParse(goalsResult.content, [])
+      const stats = await loadStatsFromDisk(projectPath)
 
       // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(projectPath)
@@ -278,16 +343,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         meta,
         manuscript,
         sheets,
-        stats: {
-          sessions,
-          dailyStats: [],
-          goals,
-          totalWords: 0,
-          streak: { current: 0, longest: 0, lastWritingDate: '' },
-          manuscriptMode: 'drafting'
-        },
+        stats,
         reports
       }
+
+      // Sync stats store
+      useStatsStore.getState().setProjectId(meta.id)
+      useStatsStore.getState().loadStats(stats)
 
       // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
@@ -318,6 +380,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         projectPath,
         isLoading: false,
         isDirty: false,
+        lastDirtyAt: 0,
         activeDocumentId: manuscript.items[0]?.id || null
       })
 
@@ -363,7 +426,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           items: addToItems(project.manuscript.items)
         }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -390,7 +453,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           items: updateItems(project.manuscript.items)
         }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -416,7 +479,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           items: removeFromItems(project.manuscript.items)
         }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -457,7 +520,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           items: duplicateInItems(project.manuscript.items)
         }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -470,7 +533,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ...project,
         manuscript: { items }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -487,7 +550,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           [sheetType + 's']: [...project.sheets[sheetType + 's' as keyof typeof project.sheets], sheet]
         }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -509,7 +572,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           notes: updateSheets(project.sheets.notes)
         }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -527,7 +590,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           notes: project.sheets.notes.filter(s => s.id !== id)
         }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -567,7 +630,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ...project,
         reports: [...project.reports, report]
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -580,7 +643,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ...project,
         reports: project.reports.map(r => r.id === id ? { ...r, ...updates } : r)
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -594,7 +657,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         reports: project.reports.filter(r => r.id !== id)
       },
       activeReportId: activeReportId === id ? null : activeReportId,
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -610,7 +673,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           typographyOverrides: Object.keys(overrides).length > 0 ? overrides : undefined
         }
       },
-      isDirty: true
+      isDirty: true, lastDirtyAt: Date.now()
     })
   },
 
@@ -618,6 +681,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoading: true })
     try {
       const project = createEmptyProject(name, author, template)
+
+      // Initialize stats store for this project
+      useStatsStore.getState().setProjectId(project.meta.id)
+      useStatsStore.getState().loadStats(project.stats)
 
       // Browser mode: use localStorage
       if (!isElectron) {
@@ -630,6 +697,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           projectPath,
           isLoading: false,
           isDirty: false,
+          lastDirtyAt: 0,
           activeDocumentId: project.manuscript.items[0]?.id || null
         })
         return
@@ -682,6 +750,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         JSON.stringify(project.stats.goals, null, 2)
       )
       await window.electronAPI.writeFile(
+        `${projectPath}/stats/stats.json`,
+        JSON.stringify({
+          dailyStats: project.stats.dailyStats,
+          totalWords: project.stats.totalWords,
+          streak: project.stats.streak,
+          manuscriptMode: project.stats.manuscriptMode
+        }, null, 2)
+      )
+      await window.electronAPI.writeFile(
         `${projectPath}/reports/reports.json`,
         JSON.stringify(project.reports, null, 2)
       )
@@ -691,6 +768,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         projectPath,
         isLoading: false,
         isDirty: false,
+        lastDirtyAt: 0,
         activeDocumentId: project.manuscript.items[0]?.id || null
       })
       localStorage.setItem('lastProjectPath', projectPath)
@@ -734,8 +812,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Read project files
       const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
       const structureResult = await window.electronAPI.readFile(`${projectPath}/manuscript/structure.json`)
-      const sessionsResult = await window.electronAPI.readFile(`${projectPath}/stats/sessions.json`)
-      const goalsResult = await window.electronAPI.readFile(`${projectPath}/stats/goals.json`)
 
       if (!metaResult.success || !metaResult.content) {
         throw new Error('Impossible de lire project.json')
@@ -746,8 +822,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       const meta = JSON.parse(metaResult.content)
       const manuscript = JSON.parse(structureResult.content)
-      const sessions = safeJsonParse(sessionsResult.content, [])
-      const goals = safeJsonParse(goalsResult.content, [])
+      const stats = await loadStatsFromDisk(projectPath)
 
       // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(projectPath)
@@ -757,16 +832,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         meta,
         manuscript,
         sheets,
-        stats: {
-          sessions,
-          dailyStats: [],
-          goals,
-          totalWords: 0,
-          streak: { current: 0, longest: 0, lastWritingDate: '' },
-          manuscriptMode: 'drafting'
-        },
+        stats,
         reports
       }
+
+      // Sync stats store
+      useStatsStore.getState().setProjectId(meta.id)
+      useStatsStore.getState().loadStats(stats)
 
       // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
@@ -797,6 +869,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         projectPath,
         isLoading: false,
         isDirty: false,
+        lastDirtyAt: 0,
         activeDocumentId: manuscript.items[0]?.id || null
       })
       localStorage.setItem('lastProjectPath', projectPath)
@@ -824,7 +897,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // Prevent concurrent saves - queue a retry if changes made during save
     if (isSaving) {
       // Mark as dirty so auto-save will pick it up later
-      set({ isDirty: true })
+      set({ isDirty: true, lastDirtyAt: Date.now() })
       return
     }
 
@@ -835,8 +908,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // Get current typography overrides from editor store
     const typographyOverrides = useEditorStore.getState().userTypographyOverrides
     const hasOverrides = Object.keys(typographyOverrides).length > 0
+    const stats = useStatsStore.getState().exportStats()
+    const saveStartedAt = Date.now()
 
-    set({ isLoading: true, isSaving: true })
+    set({ isSaving: true })
     try {
       // Browser mode: save to localStorage
       if (!isElectron || projectPath.startsWith('browser://')) {
@@ -847,10 +922,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             ...project.meta,
             updatedAt: new Date().toISOString(),
             typographyOverrides: hasOverrides ? typographyOverrides : undefined
-          }
+          },
+          stats
         }
         localStorage.setItem(`palimpseste_project_${projectId}`, JSON.stringify(updatedProject))
-        set({ project: updatedProject, isLoading: false, isSaving: false, isDirty: false })
+        set((state) => ({
+          project: updatedProject,
+          isSaving: false,
+          isDirty: state.lastDirtyAt > saveStartedAt
+        }))
+        useStatsStore.getState().markStatsSaved()
         return
       }
 
@@ -859,6 +940,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ...project.meta,
         updatedAt: new Date().toISOString(),
         typographyOverrides: hasOverrides ? typographyOverrides : undefined
+      }
+      const updatedProject: Project = {
+        ...project,
+        meta: updatedMeta,
+        stats
       }
       await window.electronAPI.writeFile(
         `${projectPath}/project.json`,
@@ -870,11 +956,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       )
       await window.electronAPI.writeFile(
         `${projectPath}/stats/sessions.json`,
-        JSON.stringify(project.stats.sessions, null, 2)
+        JSON.stringify(stats.sessions, null, 2)
       )
       await window.electronAPI.writeFile(
         `${projectPath}/stats/goals.json`,
-        JSON.stringify(project.stats.goals, null, 2)
+        JSON.stringify(stats.goals, null, 2)
+      )
+      await window.electronAPI.writeFile(
+        `${projectPath}/stats/stats.json`,
+        JSON.stringify({
+          dailyStats: stats.dailyStats,
+          totalWords: stats.totalWords,
+          streak: stats.streak,
+          manuscriptMode: stats.manuscriptMode
+        }, null, 2)
       )
 
       // Save document contents
@@ -913,11 +1008,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         JSON.stringify(project.reports, null, 2)
       )
 
-      set({ isLoading: false, isSaving: false, isDirty: false })
+      set((state) => ({
+        project: updatedProject,
+        isSaving: false,
+        isDirty: state.lastDirtyAt > saveStartedAt
+      }))
+      useStatsStore.getState().markStatsSaved()
       useStatsStore.getState().showNotification('success', 'Projet sauvegardé')
     } catch (error) {
       console.error('Failed to save project:', error)
-      set({ isLoading: false, isSaving: false })
+      set({ isSaving: false })
       useStatsStore.getState().showNotification('error', 'Erreur lors de la sauvegarde')
     }
   },
@@ -938,11 +1038,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           projectPath: `browser://${lastProjectId}`,
           isLoading: false,
           isDirty: false,
+          lastDirtyAt: 0,
           activeDocumentId: project.manuscript.items[0]?.id || null
         })
 
         // Load typography overrides into editor store
         useEditorStore.getState().loadUserOverrides(project.meta.typographyOverrides || {})
+
+        // Sync stats store
+        useStatsStore.getState().setProjectId(project.meta.id)
+        useStatsStore.getState().loadStats(project.stats)
       } catch (error) {
         console.error('Failed to load project from localStorage:', error)
       }
@@ -963,8 +1068,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const metaResult = await window.electronAPI.readFile(`${lastPath}/project.json`)
       const structureResult = await window.electronAPI.readFile(`${lastPath}/manuscript/structure.json`)
-      const sessionsResult = await window.electronAPI.readFile(`${lastPath}/stats/sessions.json`)
-      const goalsResult = await window.electronAPI.readFile(`${lastPath}/stats/goals.json`)
 
       if (!metaResult.success || !structureResult.success) {
         set({ isLoading: false })
@@ -973,8 +1076,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       const meta = JSON.parse(metaResult.content!)
       const manuscript = JSON.parse(structureResult.content!)
-      const sessions = safeJsonParse(sessionsResult.content, [])
-      const goals = safeJsonParse(goalsResult.content, [])
+      const stats = await loadStatsFromDisk(lastPath)
 
       // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(lastPath)
@@ -984,16 +1086,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         meta,
         manuscript,
         sheets,
-        stats: {
-          sessions,
-          dailyStats: [],
-          goals,
-          totalWords: 0,
-          streak: { current: 0, longest: 0, lastWritingDate: '' },
-          manuscriptMode: 'drafting'
-        },
+        stats,
         reports
       }
+
+      // Sync stats store
+      useStatsStore.getState().setProjectId(meta.id)
+      useStatsStore.getState().loadStats(stats)
 
       // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
@@ -1024,6 +1123,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         projectPath: lastPath,
         isLoading: false,
         isDirty: false,
+        lastDirtyAt: 0,
         activeDocumentId: manuscript.items[0]?.id || null
       })
     } catch (error) {

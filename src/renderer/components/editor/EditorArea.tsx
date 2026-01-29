@@ -55,6 +55,7 @@ export function EditorArea() {
   // Debounce ref for document content saving
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeDocumentIdRef = useRef<string | null>(null)
+  const previousDocumentIdRef = useRef<string | null>(null)
   activeDocumentIdRef.current = activeDocumentId
 
   // Get pagination options from current template
@@ -141,7 +142,27 @@ export function EditorArea() {
 
   // Load document content when active document changes
   useEffect(() => {
-    if (!editor || !activeDocumentId || !project) return
+    if (!editor) return
+
+    const prevId = previousDocumentIdRef.current
+    const documentChanged = prevId !== activeDocumentId
+
+    // Flush previous document content before switching
+    if (prevId && documentChanged) {
+      if (saveDebounceRef.current) {
+        clearTimeout(saveDebounceRef.current)
+        saveDebounceRef.current = null
+      }
+      useEditorStore.getState().flushCurrentDocument(prevId)
+    }
+
+    previousDocumentIdRef.current = activeDocumentId
+
+    // Only reload content if the document actually changed
+    // This prevents scroll reset when project is updated (e.g., during save)
+    if (!documentChanged) return
+
+    if (!activeDocumentId) return
 
     const savedContent = getDocumentContent(activeDocumentId)
     if (savedContent) {
@@ -152,22 +173,27 @@ export function EditorArea() {
       }
     } else {
       // Initialize new documents with a chapter title
-      const item = findManuscriptItem(project.manuscript.items, activeDocumentId)
-      if (item && (item.type === 'chapter' || item.type === 'scene')) {
-        // Create initial content with chapter title and empty first paragraph
-        editor.commands.setContent({
-          type: 'doc',
-          content: [
-            {
-              type: 'chapterTitle',
-              content: [{ type: 'text', text: item.title }]
-            },
-            {
-              type: 'firstParagraph',
-              content: []
-            }
-          ]
-        })
+      const currentProject = useProjectStore.getState().project
+      if (currentProject) {
+        const item = findManuscriptItem(currentProject.manuscript.items, activeDocumentId)
+        if (item && (item.type === 'chapter' || item.type === 'scene')) {
+          // Create initial content with chapter title and empty first paragraph
+          editor.commands.setContent({
+            type: 'doc',
+            content: [
+              {
+                type: 'chapterTitle',
+                content: [{ type: 'text', text: item.title }]
+              },
+              {
+                type: 'firstParagraph',
+                content: []
+              }
+            ]
+          })
+        } else {
+          editor.commands.setContent('')
+        }
       } else {
         editor.commands.setContent('')
       }
@@ -176,7 +202,21 @@ export function EditorArea() {
     editor.commands.resetStats()
     const wordCount = editor.storage.characterCount?.words() ?? 0
     startEditorSession(wordCount)
-  }, [editor, activeDocumentId, project, getDocumentContent, startEditorSession])
+  }, [editor, activeDocumentId, getDocumentContent, startEditorSession])
+
+  // Flush pending document content on unmount
+  useEffect(() => {
+    return () => {
+      if (saveDebounceRef.current) {
+        clearTimeout(saveDebounceRef.current)
+        saveDebounceRef.current = null
+      }
+      const docId = previousDocumentIdRef.current
+      if (docId) {
+        useEditorStore.getState().flushCurrentDocument(docId)
+      }
+    }
+  }, [])
 
   // Update pagination settings when template changes
   useEffect(() => {
