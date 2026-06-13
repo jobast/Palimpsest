@@ -1,3 +1,6 @@
-export * from './types'
-// Codec modules (frontmatter, filename, manifest, body, chapter) are added to
-// this barrel in Task 7, once they all exist. Tests import them directly until then.
+export * from './types.js'
+export * from './frontmatter.js'
+export * from './filename.js'
+export * from './manifest.js'
+export * from './body.js'
+export * from './chapter.js'
