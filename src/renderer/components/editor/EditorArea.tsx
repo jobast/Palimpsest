@@ -19,6 +19,7 @@ import { templateToPaginationOptions } from '@/lib/pagination/paginationPlusAdap
 import { PagedEditor } from './PagedEditor'
 import { SheetEditor } from './SheetEditor'
 import { ReportViewer } from './ReportViewer'
+import { NoteEditor } from './NoteEditor'
 import type { ManuscriptItem } from '@shared/types/project'
 
 // Helper to find a manuscript item by ID (recursive)
@@ -37,7 +38,7 @@ function findManuscriptItem(items: ManuscriptItem[], id: string): ManuscriptItem
  * Editor Area - Main container for the paginated editor
  */
 export function EditorArea() {
-  const { activeDocumentId, activeSheetId, activeReportId, project, setDirty } = useProjectStore()
+  const { activeDocumentId, activeSheetId, activeReportId, activeNoteId, project, setDirty } = useProjectStore()
   const {
     setEditor,
     getDocumentContent,
@@ -303,6 +304,11 @@ export function EditorArea() {
 
   if (!project) {
     return null
+  }
+
+  // Show note editor if a chapter note is open
+  if (activeNoteId) {
+    return <NoteEditor />
   }
 
   // Show report viewer if a report is active
