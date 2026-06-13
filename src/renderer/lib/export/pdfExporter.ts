@@ -133,8 +133,9 @@ export async function capturePageImages(
     const destWidth = pageCanvas.width
     const destHeight = (srcHeight / scale) * widthScale * scale
     ctx.drawImage(fullCanvas, 0, srcY, srcWidth, srcHeight, 0, 0, destWidth, destHeight)
-    // PNG (lossless) keeps text crisp — JPEG introduced ringing around glyphs.
-    images.push(pageCanvas.toDataURL('image/png'))
+    // High-quality JPEG: light, fast to encode, and crisp enough at this scale.
+    // (PNG of a full-height capture froze the renderer on long chapters.)
+    images.push(pageCanvas.toDataURL('image/jpeg', 0.97))
   }
   return images
 }
@@ -159,7 +160,7 @@ export function assembleBookPdf(pages: string[], template: PageTemplate, project
   })
   pages.forEach((img, i) => {
     if (i > 0) pdf.addPage([pageWidthMm, pageHeightMm])
-    pdf.addImage(img, 'PNG', 0, 0, pageWidthMm, pageHeightMm)
+    pdf.addImage(img, 'JPEG', 0, 0, pageWidthMm, pageHeightMm)
   })
   return pdf.output('blob')
 }
