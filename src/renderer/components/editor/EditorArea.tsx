@@ -44,7 +44,9 @@ export function EditorArea() {
     getDocumentContent,
     setDocumentContent,
     startSession: startEditorSession,
-    updateWordCount
+    updateWordCount,
+    pendingSectionIndex,
+    clearPendingSectionScroll
   } = useEditorStore()
 
   const { recordActivity } = useStatsStore()
@@ -216,6 +218,33 @@ export function EditorArea() {
     const wordCount = editor.storage.characterCount?.words() ?? 0
     startEditorSession(wordCount)
   }, [editor, activeDocumentId, getDocumentContent, startEditorSession])
+
+  // Scroll to a requested section (1-indexed) once content is loaded.
+  useEffect(() => {
+    if (!editor || pendingSectionIndex == null) return
+    // Section i starts after the (i-1)-th sceneBreak; section 1 = top.
+    let breaksSeen = 0
+    let targetPos: number | null = null
+    if (pendingSectionIndex <= 1) {
+      targetPos = 1
+    } else {
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'sceneBreak') {
+          breaksSeen += 1
+          if (breaksSeen === pendingSectionIndex - 1) {
+            targetPos = pos + node.nodeSize
+            return false
+          }
+        }
+        return true
+      })
+    }
+    if (targetPos != null) {
+      const pos = Math.min(targetPos, editor.state.doc.content.size)
+      editor.chain().setTextSelection(pos).scrollIntoView().run()
+    }
+    clearPendingSectionScroll()
+  }, [editor, activeDocumentId, pendingSectionIndex, clearPendingSectionScroll])
 
   // Flush pending document content on unmount
   useEffect(() => {
