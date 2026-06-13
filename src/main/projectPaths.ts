@@ -99,9 +99,10 @@ export async function assertProjectRootPath(projectPath: string): Promise<{
 export async function hasRequiredProjectFiles(projectPath: string): Promise<boolean> {
   try {
     const { safeProjectRoot } = await assertProjectRootPath(projectPath)
+    // The manifest project.json (meta + chapters list) is the single source of
+    // truth for a project; the manuscript now lives in chapitres/*.md.
     const requiredFiles = [
-      'project.json',
-      path.join('manuscript', 'structure.json')
+      'project.json'
     ]
 
     for (const relativePath of requiredFiles) {
