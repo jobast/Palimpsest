@@ -18,7 +18,6 @@ export interface PdfExportOptions {
   template: PageTemplate
   project: Project
   quality?: 'draft' | 'standard' | 'high'
-  onProgress?: (current: number, total: number) => void
 }
 
 /**

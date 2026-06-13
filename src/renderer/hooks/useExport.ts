@@ -92,6 +92,8 @@ export function useExport() {
     const originalZoom = zoomLevel
     const originalDocId = useProjectStore.getState().activeDocumentId
     const originalNoteId = useProjectStore.getState().activeNoteId
+    const originalSheetId = useProjectStore.getState().activeSheetId
+    const originalReportId = useProjectStore.getState().activeReportId
 
     setState({ isExporting: true, progress: 0, format: 'pdf', error: null })
 
@@ -159,11 +161,15 @@ export function useExport() {
         error: `Échec de l'export PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
       })
     } finally {
-      // Restore virtualization, zoom and the original view.
+      // Restore virtualization, zoom and the original view (whichever it was).
       setIsExportingPdf(false)
       if (originalZoom !== 100) setZoomLevel(originalZoom)
       if (originalNoteId) {
         useProjectStore.getState().setActiveNote(originalNoteId)
+      } else if (originalSheetId) {
+        useProjectStore.getState().setActiveSheet(originalSheetId)
+      } else if (originalReportId) {
+        useProjectStore.getState().setActiveReport(originalReportId)
       } else if (originalDocId) {
         useProjectStore.getState().setActiveDocument(originalDocId)
       }
