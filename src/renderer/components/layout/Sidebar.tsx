@@ -115,7 +115,8 @@ function ManuscriptPanel() {
     addManuscriptItem,
     updateManuscriptItem,
     deleteManuscriptItem,
-    duplicateManuscriptItem
+    duplicateManuscriptItem,
+    renameChapter
   } = useProjectStore()
 
   if (!project) return null
@@ -154,6 +155,7 @@ function ManuscriptPanel() {
             activeId={activeDocumentId}
             onSelect={setActiveDocument}
             onUpdate={updateManuscriptItem}
+            onRename={renameChapter}
             onDelete={deleteManuscriptItem}
             onDuplicate={duplicateManuscriptItem}
             onAddChild={addManuscriptItem}
@@ -170,6 +172,7 @@ function ManuscriptTreeItem({
   activeId,
   onSelect,
   onUpdate,
+  onRename,
   onDelete,
   onDuplicate,
   onAddChild,
@@ -179,6 +182,7 @@ function ManuscriptTreeItem({
   activeId: string | null
   onSelect: (id: string) => void
   onUpdate: (id: string, updates: Partial<ManuscriptItem>) => void
+  onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
   onAddChild: (item: ManuscriptItem, parentId?: string) => void
@@ -193,7 +197,7 @@ function ManuscriptTreeItem({
 
   const handleRename = () => {
     if (renameValue.trim() && renameValue !== item.title) {
-      onUpdate(item.id, { title: renameValue.trim() })
+      onRename(item.id, renameValue.trim())
     }
     setIsRenaming(false)
   }
@@ -337,6 +341,7 @@ function ManuscriptTreeItem({
               activeId={activeId}
               onSelect={onSelect}
               onUpdate={onUpdate}
+              onRename={onRename}
               onDelete={onDelete}
               onDuplicate={onDuplicate}
               onAddChild={onAddChild}

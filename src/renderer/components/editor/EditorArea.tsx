@@ -56,6 +56,7 @@ export function EditorArea() {
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeDocumentIdRef = useRef<string | null>(null)
   const previousDocumentIdRef = useRef<string | null>(null)
+  const programmaticTitleRef = useRef(false)
   activeDocumentIdRef.current = activeDocumentId
 
   // Get pagination options from current template
@@ -127,9 +128,19 @@ export function EditorArea() {
       }
       saveDebounceRef.current = setTimeout(() => {
         const docId = activeDocumentIdRef.current
-        if (docId) {
-          setDocumentContent(docId, JSON.stringify(editor.getJSON()))
-          setDirty(true) // Mark project as dirty for auto-save
+        if (!docId) return
+        setDocumentContent(docId, JSON.stringify(editor.getJSON()))
+        setDirty(true) // Mark project as dirty for auto-save
+        // On-page title → model (skip when we just wrote it programmatically)
+        if (!programmaticTitleRef.current) {
+          const first = editor.state.doc.firstChild
+          if (first && first.type.name === 'chapterTitle') {
+            const current = useProjectStore.getState().project
+            const item = current ? findManuscriptItem(current.manuscript.items, docId) : null
+            if (item && item.title !== first.textContent) {
+              useProjectStore.getState().renameChapter(docId, first.textContent)
+            }
+          }
         }
       }, 300) // 300ms debounce
     }
@@ -270,6 +281,25 @@ export function EditorArea() {
     const tr = editor.state.tr.setMeta('analysisUpdate', analysisUpdateCounter.current)
     editor.view.dispatch(tr)
   }, [editor, analysisResult, activeMode, selectedIssueId])
+
+  // Model → on-page chapter title (guarded against feedback loop)
+  const activeItem = project ? findManuscriptItem(project.manuscript.items, activeDocumentId ?? '') : null
+  const activeTitle = activeItem?.title
+  useEffect(() => {
+    if (!editor || !activeDocumentId || activeTitle === undefined) return
+    const first = editor.state.doc.firstChild
+    if (!first || first.type.name !== 'chapterTitle') return
+    if (first.textContent === activeTitle) return
+    programmaticTitleRef.current = true
+    editor.chain()
+      .command(({ tr }) => {
+        const end = first.nodeSize - 1
+        tr.insertText(activeTitle, 1, end)
+        return true
+      })
+      .run()
+    programmaticTitleRef.current = false
+  }, [editor, activeDocumentId, activeTitle])
 
   if (!project) {
     return null
