@@ -19,6 +19,7 @@ function App() {
   const toggleFocusMode = useUIStore(state => state.toggleFocusMode)
   const autoSaveEnabled = useUIStore(state => state.autoSaveEnabled)
   const autoSaveInterval = useUIStore(state => state.autoSaveInterval)
+  const isExportingPdf = useUIStore(state => state.isExportingPdf)
   const theme = useUIStore(state => state.theme)
   const setTheme = useUIStore(state => state.setTheme)
   const paperColor = useUIStore(state => state.paperColor)
@@ -68,7 +69,7 @@ function App() {
     }
 
     autoSaveTimerRef.current = window.setInterval(() => {
-      if (isDirty || statsDirty) {
+      if ((isDirty || statsDirty) && !isExportingPdf) {
         saveProject()
       }
     }, autoSaveInterval * 1000)
@@ -78,7 +79,7 @@ function App() {
         window.clearInterval(autoSaveTimerRef.current)
       }
     }
-  }, [autoSaveEnabled, autoSaveInterval, project, isDirty, statsDirty, saveProject])
+  }, [autoSaveEnabled, autoSaveInterval, project, isDirty, statsDirty, saveProject, isExportingPdf])
 
   // Menu action handler - uses refs to avoid re-registering listeners
   const handleMenuAction = useCallback((action: string) => {

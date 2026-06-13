@@ -6,7 +6,8 @@ import {
   exportToDocx,
   downloadDocx
 } from '@/lib/export'
-import { exportToPdf, downloadPdf } from '@/lib/export/pdfExporter'
+import { capturePageImages, assembleBookPdf, downloadPdf } from '@/lib/export/pdfExporter'
+import { flattenChapterIds } from '@shared/manuscript/order'
 
 export interface ExportState {
   isExporting: boolean
@@ -30,46 +31,41 @@ export function useExport() {
   })
 
   /**
-   * Export to DOCX format
+   * Export to DOCX format - exports all chapters in manuscript order
    */
   const exportDocx = useCallback(async () => {
     if (!editor || !project) {
       setState(s => ({ ...s, error: 'Éditeur ou projet non disponible' }))
       return
     }
-
-    setState({
-      isExporting: true,
-      progress: 0,
-      format: 'docx',
-      error: null
-    })
-
+    setState({ isExporting: true, progress: 0, format: 'docx', error: null })
     try {
-      setState(s => ({ ...s, progress: 30 }))
+      // Flush the active chapter so its latest edits are in documentContents.
+      useEditorStore.getState().flushCurrentDocument(useProjectStore.getState().activeDocumentId)
+      const { documentContents } = useEditorStore.getState()
+      const chapterDocs = flattenChapterIds(project.manuscript.items)
+        .map(id => documentContents.get(id))
+        .filter((c): c is string => !!c)
+        .map(json => editor.schema.nodeFromJSON(JSON.parse(json)))
 
+      if (chapterDocs.length === 0) {
+        setState({ isExporting: false, progress: 0, format: null, error: 'Rien à exporter' })
+        return
+      }
+
+      setState(s => ({ ...s, progress: 40 }))
       const blob = await exportToDocx({
-        editor,
+        chapterDocs,
         template: currentTemplate,
         project,
         includeHeaders: true,
         includeFooters: true
       })
-
       setState(s => ({ ...s, progress: 80 }))
-
       await downloadDocx(blob, `${project.meta.name}.docx`)
-
       setState(s => ({ ...s, progress: 100 }))
-
-      // Reset after short delay
       setTimeout(() => {
-        setState({
-          isExporting: false,
-          progress: 0,
-          format: null,
-          error: null
-        })
+        setState({ isExporting: false, progress: 0, format: null, error: null })
       }, 1000)
     } catch (error) {
       console.error('DOCX export failed:', error)
@@ -83,101 +79,78 @@ export function useExport() {
   }, [editor, currentTemplate, project])
 
   /**
-   * Export to PDF format using html2canvas + jsPDF
-   * Captures all pages by temporarily disabling virtualization
+   * Export to PDF format - captures all chapters in manuscript order
+   * Loads each chapter into the editor and captures its pages before assembling.
    */
   const exportPdf = useCallback(async () => {
-    if (!project) {
-      setState(s => ({ ...s, error: 'Projet non disponible' }))
+    if (!editor || !project) {
+      setState(s => ({ ...s, error: 'Éditeur ou projet non disponible' }))
       return
     }
 
     const { setIsExportingPdf, zoomLevel, setZoomLevel } = useUIStore.getState()
     const originalZoom = zoomLevel
+    const originalDocId = useProjectStore.getState().activeDocumentId
+    const originalNoteId = useProjectStore.getState().activeNoteId
 
-    setState({
-      isExporting: true,
-      progress: 0,
-      format: 'pdf',
-      error: null
-    })
+    setState({ isExporting: true, progress: 0, format: 'pdf', error: null })
 
     try {
-      setState(s => ({ ...s, progress: 10 }))
-
-      // 1. Disable virtualization and reset zoom to 100%
       setIsExportingPdf(true)
-      if (zoomLevel !== 100) {
-        setZoomLevel(100)
+      if (zoomLevel !== 100) setZoomLevel(100)
+
+      // Flush the active chapter, then collect chapters that have content.
+      useEditorStore.getState().flushCurrentDocument(originalDocId)
+      const { documentContents } = useEditorStore.getState()
+      const ids = flattenChapterIds(project.manuscript.items)
+        .filter(id => !!documentContents.get(id))
+
+      if (ids.length === 0) {
+        setState({ isExporting: false, progress: 0, format: null, error: 'Rien à exporter' })
+        return
       }
 
-      setState(s => ({ ...s, progress: 20 }))
+      const allPages: string[] = []
+      for (let i = 0; i < ids.length; i++) {
+        // Load this chapter into the editor and let pagination settle.
+        useProjectStore.getState().setActiveDocument(ids[i])
+        await new Promise(resolve => setTimeout(resolve, 600))
 
-      // 2. Wait for all pages to render (virtualization off, zoom reset)
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      setState(s => ({ ...s, progress: 30 }))
-
-      // 3. Get the editor element
-      const editorElement = document.querySelector('.ProseMirror.rm-with-pagination') as HTMLElement
-
-      if (!editorElement) {
-        throw new Error('Éditeur non trouvé')
-      }
-
-      // Force all elements to be visible (remove any content-visibility)
-      editorElement.style.contentVisibility = 'visible'
-      const allPageBreaks = editorElement.querySelectorAll('.rm-page-break')
-      allPageBreaks.forEach(pageBreak => {
-        (pageBreak as HTMLElement).style.contentVisibility = 'visible'
-      })
-
-      // Wait for forced visibility to take effect
-      await new Promise(resolve => setTimeout(resolve, 300))
-
-      setState(s => ({ ...s, progress: 40 }))
-
-      // 4. Generate PDF with progress callback
-      const blob = await exportToPdf({
-        editorElement,
-        template: currentTemplate,
-        project,
-        quality: 'standard',
-        onProgress: (current, total) => {
-          const progress = 40 + Math.round((current / total) * 50)
-          setState(s => ({ ...s, progress }))
+        let editorElement = document.querySelector('.ProseMirror.rm-with-pagination') as HTMLElement | null
+        if (!editorElement) {
+          // One retry - the editor may still be mounting.
+          await new Promise(resolve => setTimeout(resolve, 600))
+          editorElement = document.querySelector('.ProseMirror.rm-with-pagination') as HTMLElement | null
         }
-      })
+        if (!editorElement) {
+          console.warn('Chapitre ignoré (éditeur introuvable):', ids[i])
+          continue
+        }
 
-      setState(s => ({ ...s, progress: 95 }))
+        // Force visibility (defeat virtualization) before capture.
+        editorElement.style.contentVisibility = 'visible'
+        editorElement.querySelectorAll('.rm-page-break').forEach(pb => {
+          (pb as HTMLElement).style.contentVisibility = 'visible'
+        })
+        await new Promise(resolve => setTimeout(resolve, 200))
 
-      // 5. Restore virtualization and zoom
-      setIsExportingPdf(false)
-      if (originalZoom !== 100) {
-        setZoomLevel(originalZoom)
+        const pages = await capturePageImages(editorElement, currentTemplate, 'standard')
+        allPages.push(...pages)
+        setState(s => ({ ...s, progress: Math.round(((i + 1) / ids.length) * 90) }))
       }
 
-      // 6. Download PDF
+      if (allPages.length === 0) {
+        throw new Error('Aucune page capturée')
+      }
+
+      const blob = assembleBookPdf(allPages, currentTemplate, project)
+      setState(s => ({ ...s, progress: 95 }))
       await downloadPdf(blob, `${project.meta.name}.pdf`)
-
       setState(s => ({ ...s, progress: 100 }))
-
-      // Reset after short delay
       setTimeout(() => {
-        setState({
-          isExporting: false,
-          progress: 0,
-          format: null,
-          error: null
-        })
+        setState({ isExporting: false, progress: 0, format: null, error: null })
       }, 1000)
     } catch (error) {
-      // Restore state on error
-      setIsExportingPdf(false)
-      if (originalZoom !== 100) {
-        setZoomLevel(originalZoom)
-      }
-
       console.error('PDF export failed:', error)
       setState({
         isExporting: false,
@@ -185,8 +158,17 @@ export function useExport() {
         format: null,
         error: `Échec de l'export PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
       })
+    } finally {
+      // Restore virtualization, zoom and the original view.
+      setIsExportingPdf(false)
+      if (originalZoom !== 100) setZoomLevel(originalZoom)
+      if (originalNoteId) {
+        useProjectStore.getState().setActiveNote(originalNoteId)
+      } else if (originalDocId) {
+        useProjectStore.getState().setActiveDocument(originalDocId)
+      }
     }
-  }, [currentTemplate, project])
+  }, [editor, currentTemplate, project])
 
   /**
    * Clear any error state
