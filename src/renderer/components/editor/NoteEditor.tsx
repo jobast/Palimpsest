@@ -11,6 +11,9 @@ export function NoteEditor() {
   const [value, setValue] = useState('')
   const [loading, setLoading] = useState(true)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Latest id+value so the unmount cleanup can flush a pending save.
+  const latest = useRef({ id: activeNoteId, value })
+  latest.current = { id: activeNoteId, value }
 
   const chapter = project && activeNoteId
     ? project.manuscript.items.find(i => i.id === activeNoteId)
@@ -27,12 +30,16 @@ export function NoteEditor() {
     return () => { cancelled = true }
   }, [activeNoteId, loadChapterNote])
 
-  // Flush pending save on unmount / note switch.
+  // Flush pending save on unmount / note switch (avoid losing the last keystrokes).
   useEffect(() => {
     return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        const { id, value: pending } = latest.current
+        if (id) void saveChapterNote(id, pending)
+      }
     }
-  }, [])
+  }, [saveChapterNote])
 
   const handleChange = (next: string) => {
     setValue(next)

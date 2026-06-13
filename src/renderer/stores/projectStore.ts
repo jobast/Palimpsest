@@ -405,6 +405,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setActiveDocument: (id) => set({
     activeDocumentId: id && isValidDocumentId(id) ? id : null,
     activeSheetId: null,
+    activeReportId: null,
     activeNoteId: null
   }),
 
