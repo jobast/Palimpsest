@@ -54,6 +54,7 @@
     "date-fns": "^3.3.1",
     "docx": "^9.5.1",
     "html2canvas": "^1.4.1",
+    "js-yaml": "^4.2.0",
     "jspdf": "^4.0.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.312.0",
