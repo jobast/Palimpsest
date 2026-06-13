@@ -123,6 +123,7 @@ interface ProjectState {
   // Manuscript actions
   addManuscriptItem: (item: ManuscriptItem, parentId?: string) => void
   updateManuscriptItem: (id: string, updates: Partial<ManuscriptItem>) => void
+  renameChapter: (id: string, title: string) => void
   deleteManuscriptItem: (id: string) => void
   duplicateManuscriptItem: (id: string) => void
   reorderManuscriptItems: (items: ManuscriptItem[]) => void
@@ -554,6 +555,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       },
       isDirty: true, lastDirtyAt: Date.now()
     })
+  },
+
+  // Single setter for a chapter title (the source of truth).
+  // The TDM and the on-page chapter-title block both go through here.
+  renameChapter: (id, title) => {
+    get().updateManuscriptItem(id, { title })
   },
 
   deleteManuscriptItem: (id) => {
