@@ -31,7 +31,7 @@ export function templateToPaginationOptions(
   }
 
   // Build header content (if enabled)
-  let headerLeft = ''
+  const headerLeft = ''
   let headerRight = ''
   if (template.header?.show) {
     // Template uses format like "{author} / {title} / {page}"
@@ -44,7 +44,7 @@ export function templateToPaginationOptions(
   }
 
   // Build footer content (if enabled)
-  let footerLeft = ''
+  const footerLeft = ''
   let footerRight = ''
   if (template.footer?.show) {
     if (template.footer.showPageNumber) {

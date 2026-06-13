@@ -12,7 +12,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useStatsStore } from '@/stores/statsStore'
 import { useAnalysisStore } from '@/stores/analysisStore'
-import { useWritingTimer } from '@/hooks/useWritingTimer'
+import { useWritingTimerController } from '@/hooks/useWritingTimer'
 import { DialogueDash, WordStats, SceneBreak, ChapterTitle, FirstParagraph, TextAnalysisDecorations, FrenchSpaces } from './extensions'
 import type { WordStatsData } from './extensions'
 import { templateToPaginationOptions } from '@/lib/pagination/paginationPlusAdapter'
@@ -49,8 +49,8 @@ export function EditorArea() {
   const { recordActivity } = useStatsStore()
   const { currentTemplate } = useEditorStore()
 
-  // Initialize writing timer
-  useWritingTimer()
+  // Initialize writing timer controller (single instance)
+  useWritingTimerController()
 
   // Debounce ref for document content saving
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)

@@ -254,7 +254,7 @@ export function getCalendarGrid(year: number, month: number): string[][] {
   const lastDay = new Date(year, month + 1, 0)
 
   // Start from Monday of the first week
-  let current = getWeekStart(firstDay)
+  const current = getWeekStart(firstDay)
 
   while (current <= lastDay || current.getDay() !== 1) {
     const week: string[] = []

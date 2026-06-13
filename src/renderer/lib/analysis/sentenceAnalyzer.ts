@@ -12,7 +12,7 @@ export function segmentSentences(text: string, baseOffset: number = 0): Sentence
 
   // Replace abbreviations with placeholders to avoid false sentence breaks
   const placeholderMap = new Map<string, string>()
-  let processedText = text.replace(ABBREVIATION_REGEX, (match) => {
+  const processedText = text.replace(ABBREVIATION_REGEX, (match) => {
     const placeholder = `__ABBR${placeholderMap.size}__`
     placeholderMap.set(placeholder, match)
     return placeholder

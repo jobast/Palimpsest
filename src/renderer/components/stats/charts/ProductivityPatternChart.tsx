@@ -18,6 +18,18 @@ interface ProductivityPatternChartProps {
   className?: string
 }
 
+type ProductivityPatternPoint = {
+  day: string
+  dayIndex: number
+  avgWords: number
+  count: number
+}
+
+type TooltipProps<T> = {
+  active?: boolean
+  payload?: Array<{ payload: T }>
+}
+
 /**
  * ProductivityPatternChart Component
  *
@@ -37,7 +49,7 @@ export function ProductivityPatternChart({
   const maxAvg = Math.max(...data.map(d => d.avgWords), 1)
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipProps<ProductivityPatternPoint>) => {
     if (!active || !payload?.[0]) return null
 
     const data = payload[0].payload

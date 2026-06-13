@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePaginationStore } from '@/stores/paginationStore'
 import { calculatePageBreaks, debounce } from '@/lib/pagination'
@@ -38,48 +38,50 @@ export function usePagination() {
     }
   }, [])
 
-  // Debounced recalculation function
-  const recalculate = useCallback(
-    debounce(() => {
-      if (!editor || !measurementRef.current) {
-        return
-      }
+  const recalculateNow = useCallback(() => {
+    if (!editor || !measurementRef.current) {
+      return
+    }
 
-      // Don't calculate if editor is empty
-      if (editor.state.doc.content.size <= 2) {
-        reset()
-        return
-      }
+    // Don't calculate if editor is empty
+    if (editor.state.doc.content.size <= 2) {
+      reset()
+      return
+    }
 
-      setIsCalculating(true)
+    setIsCalculating(true)
 
-      // Use requestAnimationFrame to ensure DOM is ready
-      requestAnimationFrame(() => {
-        try {
-          const result = calculatePageBreaks({
-            template: currentTemplate,
-            editor,
-            measurementContainer: measurementRef.current!,
-            effectiveTypography: getEffectiveTypography()
-          })
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      try {
+        const result = calculatePageBreaks({
+          template: currentTemplate,
+          editor,
+          measurementContainer: measurementRef.current!,
+          effectiveTypography: getEffectiveTypography()
+        })
 
-          setPages(result.pages, result.pageBreaks)
+        setPages(result.pages, result.pageBreaks)
 
-          // Force editor to re-render decorations by dispatching a no-op transaction
-          // This ensures PageBreakDecorations plugin updates with new positions
-          if (editor.view) {
-            const tr = editor.state.tr.setMeta('pagination', true)
-            editor.view.dispatch(tr)
-          }
-        } catch (error) {
-          console.error('Pagination calculation failed:', error)
-          reset()
-        } finally {
-          setIsCalculating(false)
+        // Force editor to re-render decorations by dispatching a no-op transaction
+        // This ensures PageBreakDecorations plugin updates with new positions
+        if (editor.view) {
+          const tr = editor.state.tr.setMeta('pagination', true)
+          editor.view.dispatch(tr)
         }
-      })
-    }, 100), // 100ms debounce - faster response while still preventing excessive recalculations
-    [editor, currentTemplate, getEffectiveTypography, setPages, setIsCalculating, reset]
+      } catch (error) {
+        console.error('Pagination calculation failed:', error)
+        reset()
+      } finally {
+        setIsCalculating(false)
+      }
+    })
+  }, [editor, currentTemplate, getEffectiveTypography, setPages, setIsCalculating, reset])
+
+  // Debounced recalculation function
+  const recalculate = useMemo(
+    () => debounce(recalculateNow, 100), // 100ms debounce - faster response while still preventing excessive recalculations
+    [recalculateNow]
   )
 
   // Recalculate on content change

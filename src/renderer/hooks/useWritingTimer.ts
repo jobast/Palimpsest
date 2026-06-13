@@ -18,45 +18,35 @@ interface UseWritingTimerReturn {
 }
 
 /**
- * Hook for managing writing timer and activity detection
- *
- * Automatically:
- * - Starts timer when document is opened
- * - Detects pause after PAUSE_TIMEOUT of inactivity
- * - Resumes when writing continues
- * - Ends session when document is closed or component unmounts
+ * Format duration to HH:MM:SS or MM:SS
  */
-export function useWritingTimer(): UseWritingTimerReturn {
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+/**
+ * Controller hook for writing session lifecycle.
+ * Must be mounted once (EditorArea).
+ */
+export function useWritingTimerController(): void {
   const { editor } = useEditorStore()
   const {
     currentSession,
     startSession,
     pauseSession,
-    endSession,
-    getSessionDuration,
-    isWriting,
-    isPaused
+    endSession
   } = useStatsStore()
 
-  const [duration, setDuration] = useState(0)
   const pauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const lastActivityRef = useRef<number>(Date.now())
 
-  // Format duration to HH:MM:SS or MM:SS
-  const formatDuration = useCallback((ms: number): string => {
-    const totalSeconds = Math.floor(ms / 1000)
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-
-    if (hours > 0) {
-      return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-    }
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-  }, [])
-
-  // Clear pause timeout
   const clearPauseTimeout = useCallback(() => {
     if (pauseTimeoutRef.current) {
       clearTimeout(pauseTimeoutRef.current)
@@ -64,7 +54,6 @@ export function useWritingTimer(): UseWritingTimerReturn {
     }
   }, [])
 
-  // Set pause timeout
   const setPauseTimeout = useCallback(() => {
     clearPauseTimeout()
     pauseTimeoutRef.current = setTimeout(() => {
@@ -72,38 +61,21 @@ export function useWritingTimer(): UseWritingTimerReturn {
     }, PAUSE_TIMEOUT)
   }, [clearPauseTimeout, pauseSession])
 
-  // Start timer
-  const startTimer = useCallback(() => {
-    if (currentSession.state !== 'idle' || !editor) return
-
-    const wordCount = editor.storage.characterCount?.words() ?? 0
-    startSession(wordCount)
-    setPauseTimeout()
-  }, [currentSession.state, editor, startSession, setPauseTimeout])
-
-  // Stop timer
-  const stopTimer = useCallback(() => {
-    clearPauseTimeout()
-    endSession()
-  }, [clearPauseTimeout, endSession])
-
-  // Handle editor content changes - only for timer/pause management
-  // Word tracking is handled by WordStats extension in EditorArea
+  // Handle editor content changes for session state/pause tracking
   useEffect(() => {
     if (!editor) return
 
     const handleUpdate = ({ editor: ed }: { editor: typeof editor }) => {
       const wordCount = ed.storage.characterCount?.words() ?? 0
-      lastActivityRef.current = Date.now()
 
-      // If session not started, start it
+      // Start a session on first activity
       if (currentSession.state === 'idle') {
         startSession(wordCount)
         setPauseTimeout()
         return
       }
 
-      // Reset pause timeout on any activity (word tracking is done by WordStats)
+      // Any activity resets pause detection timeout
       setPauseTimeout()
     }
 
@@ -114,61 +86,20 @@ export function useWritingTimer(): UseWritingTimerReturn {
     }
   }, [editor, currentSession.state, startSession, setPauseTimeout])
 
-  // Update duration display every second
-  useEffect(() => {
-    if (currentSession.state === 'idle') {
-      setDuration(0)
-      return
-    }
-
-    const updateDuration = () => {
-      setDuration(getSessionDuration())
-    }
-
-    // Update immediately
-    updateDuration()
-
-    // Update every second
-    durationIntervalRef.current = setInterval(updateDuration, 1000)
-
-    return () => {
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current)
-      }
-    }
-  }, [currentSession.state, getSessionDuration])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      clearPauseTimeout()
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current)
-      }
-      // End session on unmount
-      endSession()
-    }
-  }, [clearPauseTimeout, endSession])
-
-  // Handle window/document visibility changes
+  // Handle app visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Page hidden, consider it a pause
         clearPauseTimeout()
         if (currentSession.state === 'writing') {
           pauseSession()
         }
-      } else {
-        // Page visible again
-        if (currentSession.state !== 'idle') {
-          setPauseTimeout()
-        }
+      } else if (currentSession.state !== 'idle') {
+        setPauseTimeout()
       }
     }
 
     const handleBeforeUnload = () => {
-      // Save session before leaving
       endSession()
     }
 
@@ -180,6 +111,63 @@ export function useWritingTimer(): UseWritingTimerReturn {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
   }, [currentSession.state, clearPauseTimeout, setPauseTimeout, pauseSession, endSession])
+
+  // Final cleanup when editor area unmounts
+  useEffect(() => {
+    return () => {
+      clearPauseTimeout()
+      endSession()
+    }
+  }, [clearPauseTimeout, endSession])
+}
+
+/**
+ * Display hook for UI components.
+ * Read-only timer state without lifecycle side effects.
+ */
+export function useWritingTimer(): UseWritingTimerReturn {
+  const { editor } = useEditorStore()
+  const {
+    currentSession,
+    getSessionDuration,
+    isWriting,
+    isPaused,
+    startSession,
+    endSession
+  } = useStatsStore()
+
+  const [duration, setDuration] = useState(0)
+  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (currentSession.state === 'idle') {
+      setDuration(0)
+      return
+    }
+
+    const updateDuration = () => {
+      setDuration(getSessionDuration())
+    }
+
+    updateDuration()
+    durationIntervalRef.current = setInterval(updateDuration, 1000)
+
+    return () => {
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current)
+      }
+    }
+  }, [currentSession.state, getSessionDuration])
+
+  const startTimer = useCallback(() => {
+    if (currentSession.state !== 'idle' || !editor) return
+    const wordCount = editor.storage.characterCount?.words() ?? 0
+    startSession(wordCount)
+  }, [currentSession.state, editor, startSession])
+
+  const stopTimer = useCallback(() => {
+    endSession()
+  }, [endSession])
 
   return {
     duration,

@@ -19,6 +19,17 @@ interface CumulativeProgressChartProps {
   className?: string
 }
 
+type CumulativeProgressPoint = {
+  date: string
+  cumulative: number
+  netWords: number
+}
+
+type TooltipProps<T> = {
+  active?: boolean
+  payload?: Array<{ payload: T }>
+}
+
 /**
  * CumulativeProgressChart Component
  *
@@ -42,7 +53,7 @@ export function CumulativeProgressChart({
   }
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipProps<CumulativeProgressPoint>) => {
     if (!active || !payload?.[0]) return null
 
     const data = payload[0].payload

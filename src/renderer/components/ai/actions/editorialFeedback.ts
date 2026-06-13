@@ -88,9 +88,11 @@ Fournis une analyse stylistique en Markdown:
 function extractTextContent(jsonContent: string): string {
   try {
     const doc = JSON.parse(jsonContent)
-    const extractText = (node: any): string => {
-      if (node.text) return node.text
-      if (node.content) return node.content.map(extractText).join('')
+    const extractText = (node: unknown): string => {
+      if (typeof node !== 'object' || node === null) return ''
+      const n = node as Record<string, unknown>
+      if (typeof n.text === 'string') return n.text
+      if (Array.isArray(n.content)) return n.content.map(extractText).join('')
       return ''
     }
     return extractText(doc)

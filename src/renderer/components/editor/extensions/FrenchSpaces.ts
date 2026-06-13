@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core'
+import type { Slice } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 
 /**
@@ -20,12 +21,14 @@ export const FrenchSpaces = Extension.create({
         key: new PluginKey('frenchSpaces'),
 
         // Transform pasted content to normalize spaces
-        transformPasted(slice) {
+        transformPasted(slice: Slice) {
           return slice
         },
 
         // On each transaction, normalize spaces
         appendTransaction(transactions, oldState, newState) {
+          void oldState
+
           // Only process if content changed
           const docChanged = transactions.some(tr => tr.docChanged)
           if (!docChanged) return null

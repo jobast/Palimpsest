@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { X, Trophy, Target, Flame } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -79,6 +79,11 @@ export function Toast({
   const Icon = ICONS[type]
   const styles = STYLES[type]
 
+  const handleClose = useCallback(() => {
+    setIsLeaving(true)
+    closeTimerRef.current = setTimeout(onClose, 300)
+  }, [onClose])
+
   useEffect(() => {
     // Animate in
     const showTimer = setTimeout(() => setIsVisible(true), 50)
@@ -96,12 +101,7 @@ export function Toast({
         clearTimeout(closeTimerRef.current)
       }
     }
-  }, [duration])
-
-  const handleClose = () => {
-    setIsLeaving(true)
-    closeTimerRef.current = setTimeout(onClose, 300)
-  }
+  }, [duration, handleClose])
 
   return (
     <div

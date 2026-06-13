@@ -135,9 +135,6 @@ export function useExport() {
       // Wait for forced visibility to take effect
       await new Promise(resolve => setTimeout(resolve, 300))
 
-      const gapsCount = editorElement.querySelectorAll('.rm-pagination-gap').length
-      console.log(`PDF Export: Found editor with ${gapsCount + 1} pages`)
-
       setState(s => ({ ...s, progress: 40 }))
 
       // 4. Generate PDF with progress callback

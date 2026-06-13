@@ -21,6 +21,18 @@ interface WordCountTrendChartProps {
   className?: string
 }
 
+type WordCountTrendPoint = {
+  date: string
+  netWords: number
+  goalReached: boolean
+  hasData: boolean
+}
+
+type TooltipProps<T> = {
+  active?: boolean
+  payload?: Array<{ payload: T }>
+}
+
 const PERIOD_DAYS = {
   '7d': 7,
   '30d': 30,
@@ -52,7 +64,7 @@ export function WordCountTrendChart({
   }
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: TooltipProps<WordCountTrendPoint>) => {
     if (!active || !payload?.[0]) return null
 
     const data = payload[0].payload

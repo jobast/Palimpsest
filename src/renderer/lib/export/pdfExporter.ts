@@ -58,16 +58,6 @@ export async function exportToPdf(options: PdfExportOptions): Promise<Blob> {
   const paginationGaps = Array.from(editorElement.querySelectorAll('.rm-pagination-gap')) as HTMLElement[]
   const totalPages = Math.max(1, paginationGaps.length + 1)
 
-  console.log('PDF Export: Starting capture', {
-    totalPages,
-    pageWidthPx,
-    pageHeightPx,
-    quality,
-    scale,
-    editorScrollHeight: editorElement.scrollHeight,
-    gapsFound: paginationGaps.length
-  })
-
   if (onProgress) onProgress(0, totalPages + 1)
 
   // Build color map from ORIGINAL elements before cloning
@@ -123,11 +113,6 @@ export async function exportToPdf(options: PdfExportOptions): Promise<Blob> {
     }
   })
 
-  console.log('PDF Export: Full canvas captured', {
-    canvasWidth: fullCanvas.width,
-    canvasHeight: fullCanvas.height
-  })
-
   if (onProgress) onProgress(1, totalPages + 1)
 
   // Get editor's position for coordinate calculations
@@ -178,8 +163,6 @@ export async function exportToPdf(options: PdfExportOptions): Promise<Blob> {
     pageRegions.push({ startY, endY })
   }
 
-  console.log('PDF Export: Page regions calculated', pageRegions)
-
   // Create PDF document
   const pdf = new jsPDF({
     orientation: pageWidthMm > pageHeightMm ? 'landscape' : 'portrait',
@@ -201,12 +184,6 @@ export async function exportToPdf(options: PdfExportOptions): Promise<Blob> {
 
     const region = pageRegions[i]
     const regionHeight = Math.max(1, region.endY - region.startY)
-
-    console.log(`PDF Export: Extracting page ${i + 1}/${totalPages}`, {
-      startY: region.startY,
-      endY: region.endY,
-      height: regionHeight
-    })
 
     // Add new page (except for first)
     if (i > 0) {
@@ -255,7 +232,6 @@ export async function exportToPdf(options: PdfExportOptions): Promise<Blob> {
     }
   }
 
-  console.log('PDF Export: Complete')
   return pdf.output('blob')
 }
 

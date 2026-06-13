@@ -32,8 +32,16 @@ import {
   analyzeManuscript
 } from './actions'
 import type { AnalysisProgress } from './actions'
+import type { CharacterSheet, LocationSheet, ManuscriptItem, PlotSheet } from '@shared/types/project'
 
 type ContextType = 'character' | 'location' | 'plot' | 'chapter' | 'none'
+
+type Context =
+  | { type: 'character'; entity: CharacterSheet; name: string }
+  | { type: 'location'; entity: LocationSheet; name: string }
+  | { type: 'plot'; entity: PlotSheet; name: string }
+  | { type: 'chapter'; entity: ManuscriptItem; name: string }
+  | { type: 'none'; entity: null; name: '' }
 
 interface AIAction {
   id: string
@@ -55,24 +63,24 @@ export function AIPanel() {
   }, [refreshKeyStatus])
 
   // Determine current context
-  const context = useMemo(() => {
-    if (!project) return { type: 'none' as ContextType, entity: null, name: '' }
+  const context = useMemo((): Context => {
+    if (!project) return { type: 'none', entity: null, name: '' }
 
     if (activeSheetId) {
       // Check which type of sheet is active
       const character = project.sheets.characters.find(c => c.id === activeSheetId)
-      if (character) return { type: 'character' as ContextType, entity: character, name: character.name }
+      if (character) return { type: 'character', entity: character, name: character.name }
 
       const location = project.sheets.locations.find(l => l.id === activeSheetId)
-      if (location) return { type: 'location' as ContextType, entity: location, name: location.name }
+      if (location) return { type: 'location', entity: location, name: location.name }
 
       const plot = project.sheets.plots.find(p => p.id === activeSheetId)
-      if (plot) return { type: 'plot' as ContextType, entity: plot, name: plot.name }
+      if (plot) return { type: 'plot', entity: plot, name: plot.name }
     }
 
     if (activeDocumentId) {
       // Find the chapter/scene
-      const findItem = (items: typeof project.manuscript.items): typeof items[0] | null => {
+      const findItem = (items: ManuscriptItem[]): ManuscriptItem | null => {
         for (const item of items) {
           if (item.id === activeDocumentId) return item
           if (item.children) {
@@ -83,10 +91,10 @@ export function AIPanel() {
         return null
       }
       const item = findItem(project.manuscript.items)
-      if (item) return { type: 'chapter' as ContextType, entity: item, name: item.title }
+      if (item) return { type: 'chapter', entity: item, name: item.title }
     }
 
-    return { type: 'none' as ContextType, entity: null, name: '' }
+    return { type: 'none', entity: null, name: '' }
   }, [project, activeSheetId, activeDocumentId])
 
   // Get related reports for current context
@@ -94,7 +102,7 @@ export function AIPanel() {
     if (!project || !context.entity) return []
 
     return project.reports.filter(report =>
-      report.linkedEntities.some(e => e.id === (context.entity as { id: string })?.id)
+      report.linkedEntities.some(e => e.id === context.entity.id)
     ).slice(0, 5) // Limit to 5 most recent
   }, [project, context.entity])
 
@@ -119,14 +127,14 @@ export function AIPanel() {
             label: 'Analyser ce personnage',
             description: 'Analyse approfondie du personnage',
             icon: <Search size={16} />,
-            action: () => runAction('analyze-character', () => generateCharacterAnalysis(context.entity as any))
+            action: () => runAction('analyze-character', () => generateCharacterAnalysis(context.entity))
           },
           {
             id: 'enrich-character',
             label: 'Enrichir la fiche',
             description: 'Suggestions pour completer la fiche',
             icon: <Lightbulb size={16} />,
-            action: () => runAction('enrich-character', () => generateCharacterEnrichment(context.entity as any))
+            action: () => runAction('enrich-character', () => generateCharacterEnrichment(context.entity))
           }
         ]
 
@@ -137,14 +145,14 @@ export function AIPanel() {
             label: 'Enrichir ce lieu',
             description: 'Suggestions de details et atmosphere',
             icon: <Lightbulb size={16} />,
-            action: () => runAction('enrich-location', () => generateLocationEnrichment(context.entity as any))
+            action: () => runAction('enrich-location', () => generateLocationEnrichment(context.entity))
           },
           {
             id: 'sensory-details',
             label: 'Details sensoriels',
             description: 'Generer des descriptions sensorielles',
             icon: <Sparkles size={16} />,
-            action: () => runAction('sensory-details', () => generateSensoryDetails(context.entity as any))
+            action: () => runAction('sensory-details', () => generateSensoryDetails(context.entity))
           }
         ]
 
@@ -155,14 +163,14 @@ export function AIPanel() {
             label: 'Analyser l\'intrigue',
             description: 'Structure, tensions, resolution',
             icon: <Search size={16} />,
-            action: () => runAction('analyze-plot', () => generatePlotAnalysis(context.entity as any))
+            action: () => runAction('analyze-plot', () => generatePlotAnalysis(context.entity))
           },
           {
             id: 'find-holes',
             label: 'Detecter les trous',
             description: 'Trouver les incoherences narratives',
             icon: <AlertCircle size={16} />,
-            action: () => runAction('find-holes', () => findPlotHoles(context.entity as any))
+            action: () => runAction('find-holes', () => findPlotHoles(context.entity))
           }
         ]
 
@@ -173,14 +181,14 @@ export function AIPanel() {
             label: 'Feedback editorial',
             description: 'Analyse du style et de la structure',
             icon: <FileText size={16} />,
-            action: () => runAction('editorial-feedback', () => generateEditorialFeedback(context.entity as any))
+            action: () => runAction('editorial-feedback', () => generateEditorialFeedback(context.entity))
           },
           {
             id: 'style-analysis',
             label: 'Analyse du style',
             description: 'Ton, rythme, voix narrative',
             icon: <Sparkles size={16} />,
-            action: () => runAction('style-analysis', () => generateStyleAnalysis(context.entity as any))
+            action: () => runAction('style-analysis', () => generateStyleAnalysis(context.entity))
           }
         ]
 

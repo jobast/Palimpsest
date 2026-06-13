@@ -261,16 +261,19 @@ export const useAnalysisStore = create<AnalysisState>()(
         activeMode: state.activeMode
         // Explicitly exclude: result, isAnalyzing, analysisProgress, _worker, _currentAnalysisId
       }),
-      merge: (persistedState: any, currentState) => ({
-        ...currentState,
-        ...persistedState,
-        // Ensure non-persisted state is reset on load
-        result: null,
-        isAnalyzing: false,
-        analysisProgress: null,
-        _worker: null,
-        _currentAnalysisId: null
-      })
+      merge: (persistedState: unknown, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<AnalysisState>
+        return {
+          ...currentState,
+          ...persisted,
+          // Ensure non-persisted state is reset on load
+          result: null,
+          isAnalyzing: false,
+          analysisProgress: null,
+          _worker: null,
+          _currentAnalysisId: null
+        }
+      }
     }
   )
 )

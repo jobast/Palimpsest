@@ -16,21 +16,25 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
 import type { AnalysisIssue } from '@/lib/analysis/types'
 import { cn } from '@/lib/utils'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
-function textOffsetToDocPos(doc: { descendants: (f: (node: any, pos: number) => boolean) => void; content: { size: number } }, offset: number): number {
+function textOffsetToDocPos(doc: ProseMirrorNode, offset: number): number {
   let acc = 0
   let mapped: number | null = null
 
-  doc.descendants((node: any, pos: number) => {
-    if (!node.isText || !node.text) return true
-    const text = node.text as string
+  doc.descendants((node, pos) => {
+    // ProseMirror doesn't support breaking out of `descendants` early,
+    // but returning false prevents descending further into this node.
+    if (mapped !== null) return false
+    if (!node.isText || !node.text) return
+
+    const text = node.text
     const nextAcc = acc + text.length
     if (offset <= nextAcc) {
       mapped = pos + Math.max(0, offset - acc)
       return false
     }
     acc = nextAcc
-    return true
   })
 
   return mapped ?? doc.content.size
