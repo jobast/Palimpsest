@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type {
   Project,
+  ProjectMeta,
+  ManuscriptStructure,
   ManuscriptItem,
   Sheet,
   UserTypographyOverrides,
@@ -11,6 +13,7 @@ import type {
   DailyStats,
   StatsData
 } from '@shared/types/project'
+import { parseChapter, type ChapterRef } from '@shared/markdown'
 import { aggregateDailyStats } from '@/lib/stats/aggregations'
 import { calculateStreak } from '@/lib/stats/calculations'
 import { useEditorStore } from './editorStore'
@@ -100,6 +103,7 @@ interface ProjectState {
   isDirty: boolean
   lastDirtyAt: number
   activeDocumentId: string | null
+  chapterRefs: ChapterRef[]   // id↔file mapping from the manifest (kept stable on save)
   activeSheetId: string | null  // Currently edited sheet (null = editing manuscript)
   activeReportId: string | null  // Currently viewed report
   recentProjects: RecentProject[]
@@ -317,6 +321,42 @@ const loadSheetsFromDisk = async (projectPath: string): Promise<Project['sheets'
   return sheets
 }
 
+interface LoadedManuscript {
+  items: ManuscriptItem[]
+  documentContents: Record<string, string>  // chapterId → TipTap doc JSON string
+  chapterRefs: ChapterRef[]                  // for stable filenames on save
+}
+
+// Read the manifest's chapter list + each chapitres/*.md into the in-memory model.
+const loadManuscriptFromDisk = async (
+  projectPath: string,
+  chapterRefs: ChapterRef[]
+): Promise<LoadedManuscript> => {
+  const items: ManuscriptItem[] = []
+  const documentContents: Record<string, string> = {}
+
+  for (const ref of chapterRefs) {
+    const fileResult = await window.electronAPI.readFile(`${projectPath}/${ref.file}`)
+    if (!fileResult.success || !fileResult.content) continue
+    const fallbackTitle = ref.file.replace(/^chapitres\//, '').replace(/\.md$/, '')
+    const { frontmatter, doc } = parseChapter(fileResult.content, fallbackTitle)
+    const id = frontmatter.id || ref.id
+    items.push({
+      id,
+      type: 'chapter',
+      title: frontmatter.title,
+      status: frontmatter.status ?? 'draft',
+      synopsis: frontmatter.synopsis,
+      pov: frontmatter.pov,
+      wordCount: 0,            // recomputed by the editor/stats, never persisted
+      children: []
+    })
+    documentContents[id] = JSON.stringify(doc)
+  }
+
+  return { items, documentContents, chapterRefs }
+}
+
 // Save recent projects to localStorage
 const saveRecentProjectsToStorage = (projects: RecentProject[]) => {
   localStorage.setItem('palimpseste_recentProjects', JSON.stringify(projects))
@@ -330,6 +370,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isDirty: false,
   lastDirtyAt: 0,
   activeDocumentId: null,
+  chapterRefs: [],
   activeSheetId: null,
   activeReportId: null,
   recentProjects: loadRecentProjectsFromStorage(),
@@ -405,57 +446,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       await recoverPendingSaveIfNeeded(projectPath)
 
       const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
-      const structureResult = await window.electronAPI.readFile(`${projectPath}/manuscript/structure.json`)
-
       if (!metaResult.success || !metaResult.content) {
         throw new Error('Impossible de lire project.json')
       }
-      if (!structureResult.success || !structureResult.content) {
-        throw new Error('Impossible de lire structure.json')
-      }
+      const manifest = JSON.parse(metaResult.content) as Record<string, unknown> & { chapters?: ChapterRef[] }
+      const { chapters: chapterRefsRaw, ...rest } = manifest
+      const chapterRefs: ChapterRef[] = Array.isArray(chapterRefsRaw) ? chapterRefsRaw : []
+      const meta = rest as unknown as ProjectMeta
 
-      const meta = JSON.parse(metaResult.content)
-      const manuscript = JSON.parse(structureResult.content)
       const stats = await loadStatsFromDisk(projectPath)
-
-      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(projectPath)
       const reports = await loadReportsFromDisk(projectPath)
 
-      const project: Project = {
-        meta,
-        manuscript,
-        sheets,
-        stats,
-        reports
-      }
+      const loaded = await loadManuscriptFromDisk(projectPath, chapterRefs)
+      const manuscript: ManuscriptStructure = { items: loaded.items }
 
-      // Sync stats store
+      const project: Project = { meta, manuscript, sheets, stats, reports }
+
       useStatsStore.getState().setProjectId(meta.id)
       useStatsStore.getState().loadStats(stats)
-
-      // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
 
-      // Load document contents from disk BEFORE setting activeDocumentId
       const editorStore = useEditorStore.getState()
       editorStore.clearDocumentContents()
-      const documentsDir = `${projectPath}/manuscript/documents`
-      const dirResult = await window.electronAPI.readDirectory(documentsDir)
-      if (dirResult.success && dirResult.files) {
-        const documentContents: Record<string, string> = {}
-        for (const file of dirResult.files) {
-          if (file.name.endsWith('.json') && !file.isDirectory) {
-            const documentId = file.name.replace('.json', '')
-            if (!isValidDocumentId(documentId)) continue
-            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
-            if (contentResult.success && contentResult.content) {
-              documentContents[documentId] = contentResult.content
-            }
-          }
-        }
-        editorStore.loadDocumentContents(documentContents)
-      }
+      editorStore.loadDocumentContents(loaded.documentContents)
 
       // Now set state with activeDocumentId (after documents are loaded)
       set({
@@ -464,6 +478,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
+        chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
 
@@ -922,57 +937,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       // Read project files
       const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
-      const structureResult = await window.electronAPI.readFile(`${projectPath}/manuscript/structure.json`)
-
       if (!metaResult.success || !metaResult.content) {
         throw new Error('Impossible de lire project.json')
       }
-      if (!structureResult.success || !structureResult.content) {
-        throw new Error('Impossible de lire structure.json')
-      }
+      const manifest = JSON.parse(metaResult.content) as Record<string, unknown> & { chapters?: ChapterRef[] }
+      const { chapters: chapterRefsRaw, ...rest } = manifest
+      const chapterRefs: ChapterRef[] = Array.isArray(chapterRefsRaw) ? chapterRefsRaw : []
+      const meta = rest as unknown as ProjectMeta
 
-      const meta = JSON.parse(metaResult.content)
-      const manuscript = JSON.parse(structureResult.content)
       const stats = await loadStatsFromDisk(projectPath)
-
-      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(projectPath)
       const reports = await loadReportsFromDisk(projectPath)
 
-      const project: Project = {
-        meta,
-        manuscript,
-        sheets,
-        stats,
-        reports
-      }
+      const loaded = await loadManuscriptFromDisk(projectPath, chapterRefs)
+      const manuscript: ManuscriptStructure = { items: loaded.items }
 
-      // Sync stats store
+      const project: Project = { meta, manuscript, sheets, stats, reports }
+
       useStatsStore.getState().setProjectId(meta.id)
       useStatsStore.getState().loadStats(stats)
-
-      // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
 
-      // Load document contents from disk BEFORE setting activeDocumentId
       const editorStore = useEditorStore.getState()
       editorStore.clearDocumentContents()
-      const documentsDir = `${projectPath}/manuscript/documents`
-      const dirResult = await window.electronAPI.readDirectory(documentsDir)
-      if (dirResult.success && dirResult.files) {
-        const documentContents: Record<string, string> = {}
-        for (const file of dirResult.files) {
-          if (file.name.endsWith('.json') && !file.isDirectory) {
-            const documentId = file.name.replace('.json', '')
-            if (!isValidDocumentId(documentId)) continue
-            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
-            if (contentResult.success && contentResult.content) {
-              documentContents[documentId] = contentResult.content
-            }
-          }
-        }
-        editorStore.loadDocumentContents(documentContents)
-      }
+      editorStore.loadDocumentContents(loaded.documentContents)
 
       // Now set state with activeDocumentId (after documents are loaded)
       set({
@@ -981,6 +969,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
+        chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
       localStorage.setItem('lastProjectPath', projectPath)
@@ -1204,55 +1193,31 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoading: true })
     try {
       const metaResult = await window.electronAPI.readFile(`${lastPath}/project.json`)
-      const structureResult = await window.electronAPI.readFile(`${lastPath}/manuscript/structure.json`)
-
-      if (!metaResult.success || !structureResult.success) {
+      if (!metaResult.success || !metaResult.content) {
         set({ isLoading: false })
         return
       }
+      const manifest = JSON.parse(metaResult.content) as Record<string, unknown> & { chapters?: ChapterRef[] }
+      const { chapters: chapterRefsRaw, ...rest } = manifest
+      const chapterRefs: ChapterRef[] = Array.isArray(chapterRefsRaw) ? chapterRefsRaw : []
+      const meta = rest as unknown as ProjectMeta
 
-      const meta = JSON.parse(metaResult.content!)
-      const manuscript = JSON.parse(structureResult.content!)
       const stats = await loadStatsFromDisk(lastPath)
-
-      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(lastPath)
       const reports = await loadReportsFromDisk(lastPath)
 
-      const project: Project = {
-        meta,
-        manuscript,
-        sheets,
-        stats,
-        reports
-      }
+      const loaded = await loadManuscriptFromDisk(lastPath, chapterRefs)
+      const manuscript: ManuscriptStructure = { items: loaded.items }
 
-      // Sync stats store
+      const project: Project = { meta, manuscript, sheets, stats, reports }
+
       useStatsStore.getState().setProjectId(meta.id)
       useStatsStore.getState().loadStats(stats)
-
-      // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
 
-      // Load document contents from disk BEFORE setting activeDocumentId
       const editorStore = useEditorStore.getState()
       editorStore.clearDocumentContents()
-      const documentsDir = `${lastPath}/manuscript/documents`
-      const dirResult = await window.electronAPI.readDirectory(documentsDir)
-      if (dirResult.success && dirResult.files) {
-        const documentContents: Record<string, string> = {}
-        for (const file of dirResult.files) {
-          if (file.name.endsWith('.json') && !file.isDirectory) {
-            const documentId = file.name.replace('.json', '')
-            if (!isValidDocumentId(documentId)) continue
-            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
-            if (contentResult.success && contentResult.content) {
-              documentContents[documentId] = contentResult.content
-            }
-          }
-        }
-        editorStore.loadDocumentContents(documentContents)
-      }
+      editorStore.loadDocumentContents(loaded.documentContents)
 
       // Now set state with activeDocumentId (after documents are loaded)
       set({
@@ -1261,6 +1226,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
+        chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
     } catch (error) {
