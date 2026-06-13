@@ -824,25 +824,40 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       // Create project directory structure
       await ensureCreateDirectory(projectPath)
-      await ensureCreateDirectory(`${projectPath}/manuscript/documents`)
-      await ensureCreateDirectory(`${projectPath}/sheets/characters`)
-      await ensureCreateDirectory(`${projectPath}/sheets/locations`)
-      await ensureCreateDirectory(`${projectPath}/sheets/plots`)
-      await ensureCreateDirectory(`${projectPath}/sheets/custom`)
+      await ensureCreateDirectory(`${projectPath}/chapitres`)
+      await ensureCreateDirectory(`${projectPath}/sheets`)
       await ensureCreateDirectory(`${projectPath}/stats`)
       await ensureCreateDirectory(`${projectPath}/reports`)
       await ensureCreateDirectory(`${projectPath}/snapshots`)
       await ensureCreateDirectory(`${projectPath}/trash`)
 
-      // Write project files
+      // Initial chapter → one .md + manifest entry
+      const initialRefs = planChapterFiles(
+        project.manuscript.items.map(i => ({ id: i.id, title: i.title })),
+        []
+      )
+      for (const ref of initialRefs) {
+        const item = project.manuscript.items.find(i => i.id === ref.id)!
+        const md = serializeChapter({
+          frontmatter: { id: item.id, title: item.title, status: item.status },
+          doc: {
+            type: 'doc',
+            content: [
+              { type: 'chapterTitle', content: [{ type: 'text', text: item.title }] },
+              { type: 'firstParagraph', content: [] }
+            ]
+          }
+        })
+        await ensureWriteFile(`${projectPath}/${ref.file}`, md)
+      }
+
+      // Write project manifest (meta + chapter refs)
       await ensureWriteFile(
         `${projectPath}/project.json`,
-        JSON.stringify(project.meta, null, 2)
+        JSON.stringify({ ...project.meta, chapters: initialRefs }, null, 2)
       )
-      await ensureWriteFile(
-        `${projectPath}/manuscript/structure.json`,
-        JSON.stringify(project.manuscript, null, 2)
-      )
+
+      // Write project files
       await ensureWriteFile(
         `${projectPath}/stats/sessions.json`,
         JSON.stringify(project.stats.sessions, null, 2)
@@ -868,6 +883,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({
         project,
         projectPath,
+        chapterRefs: initialRefs,
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
@@ -875,8 +891,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       })
       localStorage.setItem('lastProjectPath', projectPath)
 
-      // Clear any old document contents
+      // Clear any old document contents then pre-load initial chapter content
       useEditorStore.getState().clearDocumentContents()
+      const initialContents: Record<string, string> = {}
+      for (const ref of initialRefs) {
+        const item = project.manuscript.items.find(i => i.id === ref.id)!
+        initialContents[item.id] = JSON.stringify({
+          type: 'doc',
+          content: [
+            { type: 'chapterTitle', content: [{ type: 'text', text: item.title }] },
+            { type: 'firstParagraph', content: [] }
+          ]
+        })
+      }
+      useEditorStore.getState().loadDocumentContents(initialContents)
 
       // Add to recent projects
       get().addToRecentProjects({
