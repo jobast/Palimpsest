@@ -1,6 +1,3 @@
 export * from './types'
-export * from './frontmatter'
-export * from './filename'
-export * from './manifest'
-export * from './body'
-export * from './chapter'
+// Codec modules (frontmatter, filename, manifest, body, chapter) are added to
+// this barrel in Task 7, once they all exist. Tests import them directly until then.
