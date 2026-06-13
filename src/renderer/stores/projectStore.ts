@@ -246,14 +246,14 @@ const safeJsonParse = <T>(content: string | undefined | null, fallback: T): T =>
 const ensureCreateDirectory = async (dirPath: string): Promise<void> => {
   const result = await window.electronAPI.createDirectory(dirPath)
   if (!result.success) {
-    throw new Error(`Impossible de creer le dossier: ${dirPath}`)
+    throw new Error(`Impossible de creer le dossier: ${dirPath}${result.error ? ` (${result.error})` : ''}`)
   }
 }
 
 const ensureWriteFile = async (filePath: string, content: string): Promise<void> => {
   const result = await window.electronAPI.writeFile(filePath, content)
   if (!result.success) {
-    throw new Error(`Impossible d'ecrire le fichier: ${filePath}`)
+    throw new Error(`Impossible d'ecrire le fichier: ${filePath}${result.error ? ` (${result.error})` : ''}`)
   }
 }
 
