@@ -8,13 +8,25 @@
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "vite",
-    "dev:electron": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:electron": "vite",
+    "launch": "bash scripts/launch-app.sh menu",
+    "launch:dev": "bash scripts/launch-app.sh dev",
+    "launch:restart": "bash scripts/launch-app.sh restart-dev",
+    "launch:electron": "bash scripts/launch-app.sh electron-only",
+    "launch:restart-electron": "bash scripts/launch-app.sh restart-electron",
+    "launch:prod-local": "bash scripts/launch-app.sh prod-local",
+    "launch:packaged": "bash scripts/launch-app.sh packaged",
+    "launchers:build-macos": "bash scripts/build-macos-launchers.sh",
     "build": "tsc && vite build",
     "build:electron": "npm run build && electron-builder",
     "build:icons": "node scripts/generate-icons.mjs",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:main": "tsc -p tsconfig.node.json && node --experimental-specifier-resolution=node --test dist/main/src/main/__tests__/*.test.js",
+    "memory:init": "node scripts/session-memory.mjs init",
+    "memory:snapshot": "node scripts/session-memory.mjs snapshot",
+    "memory:show": "node scripts/session-memory.mjs show"
   },
   "dependencies": {
     "@radix-ui/react-context-menu": "^2.2.16",

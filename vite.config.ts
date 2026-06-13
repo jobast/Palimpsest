@@ -5,6 +5,15 @@ import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 
 export default defineConfig({
+  server: {
+    port: 5173,
+    strictPort: true,
+    watch: {
+      ignored: [
+        '**/*.palim/**'
+      ]
+    }
+  },
   plugins: [
     react(),
     electron([
@@ -27,9 +36,13 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist/preload',
+            emptyOutDir: false,
             rollupOptions: {
+              input: 'src/main/preload.ts',
+              external: ['electron'],
               output: {
-                format: 'cjs'
+                format: 'cjs',
+                entryFileNames: 'preload.js'
               }
             }
           }
