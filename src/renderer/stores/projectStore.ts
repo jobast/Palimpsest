@@ -105,6 +105,7 @@ interface ProjectState {
   lastDirtyAt: number
   activeDocumentId: string | null
   chapterRefs: ChapterRef[]   // id↔file mapping from the manifest (kept stable on save)
+  chaptersWithNote: Set<string>   // chapter ids that have a .note.md sidecar
   activeSheetId: string | null  // Currently edited sheet (null = editing manuscript)
   activeReportId: string | null  // Currently viewed report
   recentProjects: RecentProject[]
@@ -146,6 +147,7 @@ interface ProjectState {
   getChapterNotePath: (id: string) => string | null
   loadChapterNote: (id: string) => Promise<string>
   saveChapterNote: (id: string, note: string) => Promise<void>
+  refreshChaptersWithNote: () => Promise<void>
 
   // File operations
   createNewProject: (name: string, author: string, template: string, path?: string) => Promise<void>
@@ -378,12 +380,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   lastDirtyAt: 0,
   activeDocumentId: null,
   chapterRefs: [],
+  chaptersWithNote: new Set<string>(),
   activeSheetId: null,
   activeReportId: null,
   recentProjects: loadRecentProjectsFromStorage(),
 
   setProject: (project, path) => {
-    set({ project, projectPath: path, isDirty: false, lastDirtyAt: 0, activeSheetId: null, activeReportId: null })
+    set({ project, projectPath: path, isDirty: false, lastDirtyAt: 0, activeSheetId: null, activeReportId: null, chaptersWithNote: new Set() })
     localStorage.setItem('lastProjectPath', path)
   },
 
@@ -488,6 +491,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
+      void get().refreshChaptersWithNote()
 
       // Update recent projects
       get().addToRecentProjects({
@@ -805,11 +809,29 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   saveChapterNote: async (id, note) => {
     const path = get().getChapterNotePath(id)
     if (!path) return
+    const next = new Set(get().chaptersWithNote)
     if (note.trim() === '') {
       await window.electronAPI.deleteFile(path)
+      next.delete(id)
     } else {
       await window.electronAPI.writeFile(path, note)
+      next.add(id)
     }
+    set({ chaptersWithNote: next })
+  },
+
+  // Probe each chapter's sidecar to know which notes exist (for the TDM item).
+  refreshChaptersWithNote: async () => {
+    const { projectPath, chapterRefs } = get()
+    if (!projectPath) { set({ chaptersWithNote: new Set() }); return }
+    const entries = await Promise.all(
+      chapterRefs.map(async (ref) => {
+        const notePath = `${projectPath}/${ref.file.replace(/\.md$/, '.note.md')}`
+        const exists = await window.electronAPI.exists(notePath)
+        return exists ? ref.id : null
+      })
+    )
+    set({ chaptersWithNote: new Set(entries.filter((id): id is string => id !== null)) })
   },
 
   createNewProject: async (name, author, template, providedPath?) => {
@@ -920,6 +942,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         project,
         projectPath,
         chapterRefs: initialRefs,
+        chaptersWithNote: new Set(),
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
@@ -1037,6 +1060,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
+      void get().refreshChaptersWithNote()
       localStorage.setItem('lastProjectPath', projectPath)
 
       // Add to recent projects
@@ -1314,6 +1338,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
+      void get().refreshChaptersWithNote()
     } catch (error) {
       console.error('Failed to load last project:', error)
       set({ isLoading: false })
