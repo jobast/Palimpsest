@@ -70,6 +70,55 @@ Puis les améliorations chapitres (§E) et le reste (§F).
 - **6 templates** : `mystere`, `chronologie`, `etat_connaissance`, `pov`, `voix_personnage`, `libre`. Le template `mystere` (sections Question / Indices / Fausses pistes / Révélation / Statut) alimente un tableau de bord **Structure** (`mysteries_overview`) + **index des scènes** (qui apparaît où + nb mots).
 - **Réconciliation modèle** : côté Electron, décider si la « bible LLM » remplace ou complète les `sheets` actuels (recommandation : la bible Markdown devient la source ; les `sheets` JSON deviennent une vue ou sont migrés).
 
+**Modèle opérationnel de référence : Savana** (`/Users/saidimu/DEV/wiki/savana/`, wiki réel et fonctionnel maintenu par agent LLM). Patterns à reprendre :
+
+- **Frontmatter** `last_updated:` + **`sources:`** (liste des chapitres ingérés dans la page) — clé de l'update incrémental et de l'anti-doublon. Toujours mettre `sources:` à jour à chaque ingest.
+- Dossiers `personnages/ lieux/ themes/ structure/ ecriture/` + `raw/chapitres/*.md` (sources, lus seulement) + `log.md` (append-only).
+- **Fichiers pivots** : `structure/grille-lecture.md` (checklist d'ingest/audit), `ecriture/alertes-joan.md` (décisions à trancher par l'auteur·e : noms manquants `XXX`/`(TROUVER NOM)`, contradictions, ambiguïtés), `structure/mysteres.md`, `structure/etats-de-connaissance.md` (qui sait quoi quand), `ecriture/citations-cles.md` (voix par personnage), `ecriture/pov.md`.
+- **Opérations** :
+  - *Ingest d'un chapitre* (~10-15 min) : lire `raw/chapitres/`, identifier les pages affectées via la grille-lecture, mettre à jour contenu + `sources:`, signaler les éléments nouveaux, appendre à `log.md`.
+  - *Audit par lots* (5+ chapitres) : diff `ls raw/chapitres/` vs les `sources:` de toutes les pages → lots thématiques → **agents Explore parallèles** (`run_in_background`), un par lot de 6-8 chapitres.
+  - *Répondre à une question* : synthétiser depuis les pages, ne pas halluciner ce qui n'est pas documenté.
+  - *Contradiction* : **ne jamais supprimer** l'ancienne version ; documenter les deux avec leur source (`ch. X dit… mais ch. Y dit…`) ; ajouter à `alertes-joan.md` si décision d'auteur·e.
+- **Conventions de contenu** : marquer l'incertitude `(non vérifié dans les chapitres lus)` ; respecter les ambiguïtés volontaires (ne pas « résoudre ») ; traiter les notes d'auteur·e comme telles, pas comme du récit ; jamais de tirets longs dans le wiki (—) → tirets simples.
+- Savana expose aussi un serveur `query.py` (Flask, port 5051) pour navigation + Q&A. Côté Electron, l'équivalent est l'intégration IA in-app (§A) ; à terme, l'ingest/audit pourrait même être délégué à un agent (Claude Code) lisant directement les `.md` — d'où l'intérêt du stockage Markdown (§B′).
+
+---
+
+## B′. Stockage du manuscrit en Markdown  ⬜ (décision d'architecture)
+
+**État Electron : ⬜** — le contenu des scènes est aujourd'hui stocké en **TipTap JSON** (un fichier par document sous le dossier `documents/`). Proposition : passer le **manuscrit (chapitres/scènes) en `.md`**, comme les chapitres sources de Savana (`raw/chapitres/*.md`) et comme le wiki.
+
+**Argument central (lève l'objection « le Markdown perd la mise en forme ») :**
+
+> Dans une app de mise en pages livre, l'**alignement** (justifié/centré), le **retrait de 1ʳᵉ ligne**, la **police**, l'**interligne** sont des décisions de **format/template** — **pas** du contenu paragraphe par paragraphe. Ils appartiennent au FormatEngine (source unique), pas au fichier de texte.
+
+Donc le Markdown ne perd rien d'essentiel : ce que l'auteur·e met dans le **contenu** (gras, italique, sauts de scène) est nativement géré.
+
+**Avantages pour ce projet :**
+- Intégration wiki **triviale** : l'agent LLM lit directement `chapitres/NNN.md` (modèle Savana).
+- Un seul corpus Markdown cohérent (manuscrit + bible) : versionnable git, portable, éditable hors app, pérenne.
+- Aligne Palimpseste sur le workflow Savana déjà éprouvé.
+
+**3 décisions à confirmer (recommandations par défaut) :**
+1. **Soulignement** — Markdown n'a pas de souligné natif. Recommandation : ne pas le proposer dans l'éditeur (l'italique est la convention en fiction) ; si vraiment nécessaire, tolérer `<u>…</u>` inline (CommonMark l'accepte). *À confirmer.*
+2. **Ordre chapitres/scènes** — recommandation : via le **manifeste `project.json`** (robuste au renommage), plutôt que par préfixe numérique de fichier. Les `.md` portent un id/titre en frontmatter ; l'ordre vit dans le manifeste. *À confirmer.*
+3. **Surlignages/annotations d'analyse** — ne **pas** les stocker dans le `.md` (offsets recalculables) : sidecar de métadonnées ou recalcul à l'ouverture. *À confirmer.*
+
+**Technique :** TipTap ↔ Markdown via `tiptap-markdown` / `prosemirror-markdown`. Verrouiller le round-trip sur les marques conservées (gras/italique), mapper sauts de scène → `* * *`, titres de chapitre = structure (frontmatter/manifeste, pas corps). Prévoir une **migration** des documents TipTap-JSON existants → `.md`.
+
+> Contraste : la version Qt stocke les scènes en **HTML** (pour préserver alignement/souligné). Vu l'argument « format = template », c'était trop prudent ; pour Electron + wiki LLM, le Markdown est le meilleur choix.
+
+**Format projet cible (proposition) :**
+```
+<projet>.palim/
+  project.json            ← manifeste (méta, ordre chapitres/scènes, formatId, style, dialogueStyle, dailyGoal)
+  chapitres/<NNN-slug>.md ← une scène/chapitre par fichier (frontmatter: id, titre ; corps Markdown)
+  wiki/                   ← bible Markdown (modèle Savana, §B)
+  stats/sessions.jsonl    ← sessions d'écriture
+  .backups/<ISO>/         ← sauvegardes horodatées
+```
+
 ---
 
 ## C. Gestion des dialogues  🟡
@@ -137,10 +186,12 @@ Le portage des features ci-dessus est indépendant du **problème central d'Elec
 
 ## H. Ordre de portage suggéré
 
-1. **IA multi-provider + charte + personas** (§A) — valeur immédiate, risque faible, briques déjà présentes.
+0. **Décision stockage Markdown** (§B′) — **fondamentale**, à trancher en premier (brainstorm → spec) : elle conditionne le wiki, l'export et la migration. Faire le spec avant d'implémenter le reste.
+1. **IA multi-provider + charte + personas** (§A) — valeur immédiate, risque faible, briques déjà présentes (indépendant du stockage).
 2. **Notes chapitre** (§D) + **améliorations chapitres** (§E) — petits, autonomes.
 3. **Dialogues** (§C) — petit, autonome ; attention U+202F.
-4. **Wiki/bible LLM** (§B) — le plus gros morceau et le différenciateur ; à faire en sous-jalons (modèle disque → intégration LLM → liens/graphe → recherche → interroger → structure).
-5. **Pagination robuste** (§G) — chantier parallèle, prioritaire pour la qualité perçue.
+4. **Migration manuscrit → `.md`** (§B′) — une fois le spec validé ; prérequis du wiki.
+5. **Wiki/bible LLM** (§B, modèle Savana) — le plus gros morceau et le différenciateur ; sous-jalons (modèle disque → ingest/audit LLM → liens/graphe → recherche → interroger → structure).
+6. **Pagination robuste** (§G) — chantier parallèle, prioritaire pour la qualité perçue.
 
 > Chaque item devrait passer par son propre cycle brainstorming → spec → plan → implémentation.
