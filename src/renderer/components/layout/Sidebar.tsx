@@ -24,11 +24,13 @@ import {
   FileCheck,
   Map,
   Bot,
-  Sparkles
+  Sparkles,
+  X,
+  Save
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ManuscriptItem, LocationSheet, CharacterSheet, PlotSheet, AIReport } from '@shared/types/project'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { GlobalMapView } from '../maps/GlobalMapView'
 import {
   ContextMenu,
@@ -116,7 +118,9 @@ function ManuscriptPanel() {
     updateManuscriptItem,
     deleteManuscriptItem,
     duplicateManuscriptItem,
-    renameChapter
+    renameChapter,
+    loadChapterNote,
+    saveChapterNote
   } = useProjectStore()
 
   if (!project) return null
@@ -159,6 +163,8 @@ function ManuscriptPanel() {
             onDelete={deleteManuscriptItem}
             onDuplicate={duplicateManuscriptItem}
             onAddChild={addManuscriptItem}
+            onLoadNote={loadChapterNote}
+            onSaveNote={saveChapterNote}
             depth={0}
           />
         ))}
@@ -176,6 +182,8 @@ function ManuscriptTreeItem({
   onDelete,
   onDuplicate,
   onAddChild,
+  onLoadNote,
+  onSaveNote,
   depth
 }: {
   item: ManuscriptItem
@@ -186,12 +194,44 @@ function ManuscriptTreeItem({
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
   onAddChild: (item: ManuscriptItem, parentId?: string) => void
+  onLoadNote: (id: string) => Promise<string>
+  onSaveNote: (id: string, note: string) => Promise<void>
   depth: number
 }) {
   const [expanded, setExpanded] = useState(true)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(item.title)
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [noteValue, setNoteValue] = useState('')
+  const [noteLoading, setNoteLoading] = useState(false)
   const hasChildren = item.children && item.children.length > 0
+
+  const handleOpenNote = async () => {
+    setNoteLoading(true)
+    setNoteOpen(true)
+    const content = await onLoadNote(item.id)
+    setNoteValue(content)
+    setNoteLoading(false)
+  }
+
+  const handleSaveNote = async () => {
+    await onSaveNote(item.id, noteValue)
+    setNoteOpen(false)
+  }
+
+  const handleCloseNote = () => {
+    setNoteOpen(false)
+  }
+
+  // Close on Escape
+  useEffect(() => {
+    if (!noteOpen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCloseNote()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [noteOpen])
 
   const icon = item.type === 'folder' ? <Folder size={14} /> : <FileText size={14} />
 
@@ -317,6 +357,10 @@ function ManuscriptTreeItem({
                 <Plus size={14} className="mr-2" />
                 Ajouter une scene
               </ContextMenuItem>
+              <ContextMenuItem onClick={handleOpenNote}>
+                <StickyNote size={14} className="mr-2" />
+                Note du chapitre
+              </ContextMenuItem>
             </>
           )}
 
@@ -332,6 +376,61 @@ function ManuscriptTreeItem({
         </ContextMenuContent>
       </ContextMenu>
 
+      {/* Private chapter note dialog */}
+      {noteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={handleCloseNote}
+          />
+          <div className="relative bg-background rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <StickyNote size={16} className="text-muted-foreground" />
+                <h2 className="text-sm font-semibold">Note — {item.title}</h2>
+              </div>
+              <button
+                onClick={handleCloseNote}
+                className="p-1 rounded hover:bg-accent transition-colors"
+              >
+                <X size={16} className="text-muted-foreground" />
+              </button>
+            </div>
+            <div className="p-4">
+              {noteLoading ? (
+                <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+                  Chargement...
+                </div>
+              ) : (
+                <textarea
+                  value={noteValue}
+                  onChange={(e) => setNoteValue(e.target.value)}
+                  placeholder="Note privée (jamais exportée, jamais incluse dans le manuscrit)..."
+                  className="w-full h-40 resize-none rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                />
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-4 py-3 border-t border-border">
+              <button
+                onClick={handleCloseNote}
+                className="px-3 py-1.5 text-sm rounded hover:bg-accent transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleSaveNote}
+                disabled={noteLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                <Save size={14} />
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {hasChildren && expanded && (
         <div>
           {item.children!.map((child) => (
@@ -345,6 +444,8 @@ function ManuscriptTreeItem({
               onDelete={onDelete}
               onDuplicate={onDuplicate}
               onAddChild={onAddChild}
+              onLoadNote={onLoadNote}
+              onSaveNote={onSaveNote}
               depth={depth + 1}
             />
           ))}

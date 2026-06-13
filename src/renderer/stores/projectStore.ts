@@ -142,6 +142,11 @@ interface ProjectState {
   // Typography overrides
   updateTypographyOverrides: (overrides: UserTypographyOverrides) => void
 
+  // Chapter note sidecar helpers (.note.md, never in manuscript, never exported)
+  getChapterNotePath: (id: string) => string | null
+  loadChapterNote: (id: string) => Promise<string>
+  saveChapterNote: (id: string, note: string) => Promise<void>
+
   // File operations
   createNewProject: (name: string, author: string, template: string, path?: string) => Promise<void>
   openProject: () => Promise<void>
@@ -781,6 +786,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       },
       isDirty: true, lastDirtyAt: Date.now()
     })
+  },
+
+  getChapterNotePath: (id) => {
+    const { projectPath, chapterRefs } = get()
+    const ref = chapterRefs.find(r => r.id === id)
+    if (!projectPath || !ref) return null
+    return `${projectPath}/${ref.file.replace(/\.md$/, '.note.md')}`
+  },
+
+  loadChapterNote: async (id) => {
+    const path = get().getChapterNotePath(id)
+    if (!path) return ''
+    const result = await window.electronAPI.readFile(path)
+    return result.success && result.content ? result.content : ''
+  },
+
+  saveChapterNote: async (id, note) => {
+    const path = get().getChapterNotePath(id)
+    if (!path) return
+    if (note.trim() === '') {
+      await window.electronAPI.deleteFile(path)
+    } else {
+      await window.electronAPI.writeFile(path, note)
+    }
   },
 
   createNewProject: async (name, author, template, providedPath?) => {
