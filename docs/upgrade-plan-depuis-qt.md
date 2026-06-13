@@ -155,7 +155,8 @@ Donc le Markdown ne perd rien d'essentiel : ce que l'auteur·e met dans le **con
 
 **État Electron : 🟡** — l'arbre `Sidebar.tsx` gère déjà chapitres/scènes (+ renommage inline, statut, dupliquer, ajouter scène). À aligner sur le comportement Qt :
 
-- **Titre de chapitre éditable en MAJUSCULE** en tête de la 1ʳᵉ section, synchronisé arbre ↔ éditeur, **exclu** du contenu stocké (le titre vit dans le modèle ; l'export le régénère). NB : côté Electron il existe déjà un node `chapterTitle` (`ParagraphStyles`) — base réutilisable.
+- **Titre de chapitre éditable en MAJUSCULE** en tête du chapitre, **exclu** du corps stocké. NB : côté Electron il existe déjà un node `chapterTitle` (`ParagraphStyles`) — base réutilisable.
+- **Renommage lié dans les deux sens (TDM ↔ page)** : le titre du chapitre a **une seule source** (le `title:` du frontmatter du `.md`, cf. §B′) et **deux vues éditables** : la **table des matières** (panneau gauche) et le **bloc-titre sur la page**. Renommer dans l'une met à jour le frontmatter → l'autre se rafraîchit (sync bidirectionnelle, anti-boucle). Le titre n'est jamais dupliqué dans le corps ; l'export le régénère depuis la source.
 - **Menu contextuel** complet : Renommer · Ajouter une section · Ajouter une note · Intégrer à la bible.
 - **Réordonnancement des chapitres par glisser-déposer** (Electron : DnD React ; le store a déjà `reorderManuscriptItems`).
 - **Vocabulaire** : « scène » → « section » dans l'UI (optionnel, cohérence avec Qt).
