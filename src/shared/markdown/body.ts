@@ -62,3 +62,68 @@ export function docToMarkdownBody(doc: TipTapDoc): string {
   }
   return blocks.length ? blocks.join('\n\n') + '\n' : ''
 }
+
+// --- Parsing: markdown body → doc content nodes ----------------------------
+
+function unescapeInline(text: string): string {
+  return text.replace(/\\([*_\\#>+\-.])/g, '$1')
+}
+
+// Tokenize a single paragraph's text into text nodes carrying bold/italic.
+// Order matters: *** then ** then *.
+function parseInline(line: string): TipTapNode[] {
+  const tokens: TipTapNode[] = []
+  const re = /\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*]+)\*/g
+  let last = 0
+  let m: RegExpExecArray | null
+  const pushText = (raw: string, marks?: string[]) => {
+    if (!raw) return
+    const node: TipTapNode = { type: 'text', text: unescapeInline(raw) }
+    if (marks?.length) node.marks = marks.map(type => ({ type }))
+    tokens.push(node)
+  }
+  while ((m = re.exec(line)) !== null) {
+    pushText(line.slice(last, m.index))
+    if (m[1] !== undefined) pushText(m[1], ['bold', 'italic'])
+    else if (m[2] !== undefined) pushText(m[2], ['bold'])
+    else if (m[3] !== undefined) pushText(m[3], ['italic'])
+    last = re.lastIndex
+  }
+  pushText(line.slice(last))
+  return tokens
+}
+
+function parseBlock(raw: string): TipTapNode | null {
+  const block = raw.replace(/^\n+|\n+$/g, '')
+  if (!block) return null
+  if (/^\*\s\*\s\*$/.test(block.trim())) return { type: 'sceneBreak' }
+  const heading = block.match(/^(#{1,3})\s+(.*)$/)
+  if (heading) {
+    return { type: 'heading', attrs: { level: heading[1].length }, content: parseInline(heading[2]) }
+  }
+  // Join soft-wrapped lines; CommonMark hard break (two trailing spaces) → hardBreak.
+  const lines = block.split('\n')
+  const content: TipTapNode[] = []
+  lines.forEach((line, i) => {
+    const hard = /  $/.test(line)
+    content.push(...parseInline(line.replace(/\s+$/, '')))
+    if (i < lines.length - 1) content.push(hard ? { type: 'hardBreak' } : { type: 'text', text: ' ' })
+  })
+  return { type: 'paragraph', content }
+}
+
+/**
+ * markdown body → array of content nodes. The first paragraph becomes a
+ * `firstParagraph` node (no first-line indent after the chapter title).
+ */
+export function markdownBodyToContent(body: string): TipTapNode[] {
+  const blocks = body.split(/\n[ \t]*\n/)
+  const nodes: TipTapNode[] = []
+  for (const raw of blocks) {
+    const node = parseBlock(raw)
+    if (node) nodes.push(node)
+  }
+  const first = nodes.find(n => n.type === 'paragraph')
+  if (first) first.type = 'firstParagraph'
+  return nodes
+}
