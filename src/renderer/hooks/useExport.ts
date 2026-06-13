@@ -136,7 +136,7 @@ export function useExport() {
         })
         await new Promise(resolve => setTimeout(resolve, 200))
 
-        const pages = await capturePageImages(editorElement, currentTemplate, 'standard')
+        const pages = await capturePageImages(editorElement, currentTemplate, 'high')
         allPages.push(...pages)
         setState(s => ({ ...s, progress: Math.round(((i + 1) / ids.length) * 90) }))
       }

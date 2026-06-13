@@ -57,7 +57,7 @@ export async function capturePageImages(
     height: editorElement.scrollHeight,
     windowWidth: editorElement.scrollWidth,
     windowHeight: editorElement.scrollHeight,
-    onclone: (_clonedDoc, clonedElement) => {
+    onclone: (clonedDoc, clonedElement) => {
       clonedElement.style.backgroundColor = '#ffffff'
       const clonedElements = Array.from(clonedElement.querySelectorAll('*'))
       clonedElements.forEach((el, index) => {
@@ -71,12 +71,21 @@ export async function capturePageImages(
         htmlEl.style.contentVisibility = 'visible'
         htmlEl.style.visibility = 'visible'
       })
-      const gaps = Array.from(clonedElement.querySelectorAll('.rm-pagination-gap'))
-      for (const gap of gaps) {
-        const gapEl = gap as HTMLElement
-        gapEl.style.backgroundColor = '#ffffff'
-        gapEl.style.borderColor = '#ffffff'
-      }
+      // Neutralize on-screen chrome for a clean print: white page frames, no
+      // muted gap fill, no inter-page drop shadows. !important beats the inline
+      // background re-applied above.
+      const printStyle = clonedDoc.createElement('style')
+      printStyle.textContent = `
+        .rm-pagination-gap,
+        .rm-page-header, .rm-page-footer, .rm-first-page-header,
+        .rm-page-break, .rm-page-break .page, .rm-page-break .breaker {
+          background: #ffffff !important;
+          border-color: #ffffff !important;
+          box-shadow: none !important;
+        }
+        .rm-pagination-gap::before, .rm-pagination-gap::after { display: none !important; }
+      `
+      ;(clonedDoc.head ?? clonedElement).appendChild(printStyle)
     }
   })
 
@@ -85,29 +94,20 @@ export async function capturePageImages(
   for (let i = 0; i < totalPages; i++) {
     let startY: number
     let endY: number
+    // Slice on the GAP edges (not the breaker): the gap is the empty space
+    // between page frames, while the header/footer live just outside it. So
+    // gap.bottom = top of this page's header (= top margin) and gap.top =
+    // bottom of this page's footer. This keeps header + top/bottom margins on
+    // every page, exactly as on screen.
     if (i === 0) {
       startY = 0
     } else {
-      const prevGap = paginationGaps[i - 1]
-      const breaker = prevGap.closest('.breaker') as HTMLElement | null
-      if (breaker) {
-        const breakerRect = breaker.getBoundingClientRect()
-        startY = breakerRect.bottom - editorRect.top + editorElement.scrollTop
-      } else {
-        const prevGapRect = prevGap.getBoundingClientRect()
-        startY = prevGapRect.bottom - editorRect.top + editorElement.scrollTop
-      }
+      const prevGapRect = paginationGaps[i - 1].getBoundingClientRect()
+      startY = prevGapRect.bottom - editorRect.top + editorElement.scrollTop
     }
     if (i < paginationGaps.length) {
-      const gap = paginationGaps[i]
-      const breaker = gap.closest('.breaker') as HTMLElement | null
-      if (breaker) {
-        const breakerRect = breaker.getBoundingClientRect()
-        endY = breakerRect.top - editorRect.top + editorElement.scrollTop
-      } else {
-        const gapRect = gap.getBoundingClientRect()
-        endY = gapRect.top - editorRect.top + editorElement.scrollTop
-      }
+      const gapRect = paginationGaps[i].getBoundingClientRect()
+      endY = gapRect.top - editorRect.top + editorElement.scrollTop
     } else {
       endY = editorElement.scrollHeight
     }
@@ -133,7 +133,8 @@ export async function capturePageImages(
     const destWidth = pageCanvas.width
     const destHeight = (srcHeight / scale) * widthScale * scale
     ctx.drawImage(fullCanvas, 0, srcY, srcWidth, srcHeight, 0, 0, destWidth, destHeight)
-    images.push(pageCanvas.toDataURL('image/jpeg', 0.92))
+    // PNG (lossless) keeps text crisp — JPEG introduced ringing around glyphs.
+    images.push(pageCanvas.toDataURL('image/png'))
   }
   return images
 }
@@ -158,7 +159,7 @@ export function assembleBookPdf(pages: string[], template: PageTemplate, project
   })
   pages.forEach((img, i) => {
     if (i > 0) pdf.addPage([pageWidthMm, pageHeightMm])
-    pdf.addImage(img, 'JPEG', 0, 0, pageWidthMm, pageHeightMm)
+    pdf.addImage(img, 'PNG', 0, 0, pageWidthMm, pageHeightMm)
   })
   return pdf.output('blob')
 }
