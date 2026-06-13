@@ -13,7 +13,8 @@ import type {
   DailyStats,
   StatsData
 } from '@shared/types/project'
-import { parseChapter, type ChapterRef } from '@shared/markdown'
+import { parseChapter, serializeChapter, planChapterFiles, orphanFiles, type ChapterRef } from '@shared/markdown'
+import type { TipTapDoc } from '@shared/markdown'
 import { aggregateDailyStats } from '@/lib/stats/aggregations'
 import { calculateStreak } from '@/lib/stats/calculations'
 import { useEditorStore } from './editorStore'
@@ -1015,6 +1016,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isSaving: true })
     try {
       // Browser mode: save to localStorage
+      // Browser mode keeps the in-memory TipTap JSON (no .md files on disk).
       if (!hasElectronAPI() || projectPath.startsWith('browser://')) {
         const projectId = project.meta.id
         const updatedProject = {
@@ -1051,14 +1053,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         stats
       }
       await ensureWriteFile(
-        `${projectPath}/project.json`,
-        JSON.stringify(updatedMeta, null, 2)
-      )
-      await ensureWriteFile(
-        `${projectPath}/manuscript/structure.json`,
-        JSON.stringify(project.manuscript, null, 2)
-      )
-      await ensureWriteFile(
         `${projectPath}/stats/sessions.json`,
         JSON.stringify(stats.sessions, null, 2)
       )
@@ -1076,19 +1070,45 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }, null, 2)
       )
 
-      // Save document contents
-      const documentContents = useEditorStore.getState().getAllDocumentContents()
-      for (const documentId of documentContents.keys()) {
-        if (!isValidDocumentId(documentId)) {
-          throw new Error(`ID de document invalide: ${documentId}`)
-        }
+      // --- Manuscript: one .md per chapter + manifest order ---
+      const items = project.manuscript.items
+      const newRefs = planChapterFiles(
+        items.map(i => ({ id: i.id, title: i.title })),
+        get().chapterRefs
+      )
+      const refById = new Map(newRefs.map(r => [r.id, r.file]))
+      const docContents = useEditorStore.getState().getAllDocumentContents()
+
+      for (const item of items) {
+        const file = refById.get(item.id)
+        if (!file) continue
+        const json = docContents.get(item.id)
+        const doc: TipTapDoc = json
+          ? (JSON.parse(json) as TipTapDoc)
+          : { type: 'doc', content: [{ type: 'chapterTitle', content: [{ type: 'text', text: item.title }] }] }
+        const md = serializeChapter({
+          frontmatter: {
+            id: item.id,
+            title: item.title,
+            status: item.status,
+            synopsis: item.synopsis,
+            pov: item.pov
+          },
+          doc
+        })
+        await ensureWriteFile(`${projectPath}/${file}`, md)
       }
-      for (const [documentId, content] of documentContents) {
-        await ensureWriteFile(
-          `${projectPath}/manuscript/documents/${documentId}.json`,
-          content
-        )
+
+      // Delete .md files for removed chapters (journal-aware).
+      for (const orphan of orphanFiles(get().chapterRefs, newRefs)) {
+        await window.electronAPI.deleteFile(`${projectPath}/${orphan}`)
       }
+
+      // Manifest = meta + ordered chapter refs.
+      await ensureWriteFile(
+        `${projectPath}/project.json`,
+        JSON.stringify({ ...updatedMeta, chapters: newRefs }, null, 2)
+      )
 
       // Save sheets
       await ensureWriteFile(
@@ -1119,6 +1139,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       set((state) => ({
         project: updatedProject,
+        chapterRefs: newRefs,
         isSaving: false,
         isDirty: state.lastDirtyAt > saveStartedAt
       }))
