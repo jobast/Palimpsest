@@ -577,6 +577,19 @@ ipcMain.handle('fs:exists', async (_, filePath: string) => {
   }
 })
 
+ipcMain.handle('fs:deleteFile', async (_, filePath: string) => {
+  try {
+    const { safePath, safeProjectRoot } = await assertProjectScopedPath(filePath)
+    await trackBackupForWrite(safeProjectRoot, safePath)  // journal-aware: restorable
+    await fs.promises.unlink(safePath).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== 'ENOENT') throw err   // deleting a missing file is a no-op
+    })
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
 ipcMain.handle('fs:beginSaveJournal', async (_, projectPath: string) => {
   try {
     const { safeProjectRoot } = await assertProjectRootPath(projectPath)

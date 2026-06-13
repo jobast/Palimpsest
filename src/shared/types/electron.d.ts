@@ -88,6 +88,7 @@ export interface ElectronAPI {
   saveProject: () => Promise<SaveDialogResult>
   readFile: (filePath: string) => Promise<FileResult>
   writeFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
+  deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
   createDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>
   readDirectory: (dirPath: string) => Promise<DirectoryResult>
   exists: (filePath: string) => Promise<boolean>
