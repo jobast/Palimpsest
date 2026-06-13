@@ -522,7 +522,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   addManuscriptItem: (item, parentId) => {
-    const { project } = get()
+    const { project, chapterRefs } = get()
     if (!project) return
 
     const addToItems = (items: ManuscriptItem[]): ManuscriptItem[] => {
@@ -540,13 +540,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       })
     }
 
+    const newItems = addToItems(project.manuscript.items)
     set({
       project: {
         ...project,
         manuscript: {
-          items: addToItems(project.manuscript.items)
+          items: newItems
         }
       },
+      // Keep chapterRefs in sync so a new chapter has a stable file ref at once;
+      // note paths derive from it (otherwise saveChapterNote silently no-ops).
+      chapterRefs: planChapterFiles(newItems.map(i => ({ id: i.id, title: i.title })), chapterRefs),
       isDirty: true, lastDirtyAt: Date.now()
     })
   },
@@ -611,7 +615,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   duplicateManuscriptItem: (id) => {
-    const { project } = get()
+    const { project, chapterRefs } = get()
     if (!project) return
 
     // Deep clone function for manuscript items
@@ -640,13 +644,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return result
     }
 
+    const newItems = duplicateInItems(project.manuscript.items)
     set({
       project: {
         ...project,
         manuscript: {
-          items: duplicateInItems(project.manuscript.items)
+          items: newItems
         }
       },
+      // Assign a stable file ref to the duplicated chapter immediately.
+      chapterRefs: planChapterFiles(newItems.map(i => ({ id: i.id, title: i.title })), chapterRefs),
       isDirty: true, lastDirtyAt: Date.now()
     })
   },
