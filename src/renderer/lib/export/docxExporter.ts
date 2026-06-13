@@ -15,15 +15,17 @@ import {
   Footer,
   PageNumber,
   Packer,
+  PageBreak,
   convertInchesToTwip,
   IRunOptions
 } from 'docx'
-import type { Editor } from '@tiptap/react'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { PageTemplate } from '@shared/types/templates'
 import type { Project } from '@shared/types/project'
 
 export interface DocxExportOptions {
-  editor: Editor
+  /** Ordered chapter documents (ProseMirror doc nodes), one per chapter. */
+  chapterDocs: ProseMirrorNode[]
   template: PageTemplate
   project: Project
   includeHeaders?: boolean
@@ -31,11 +33,12 @@ export interface DocxExportOptions {
 }
 
 /**
- * Export editor content to DOCX format
+ * Export the whole manuscript to DOCX: every chapter concatenated in order,
+ * with a page break before each chapter except the first.
  */
 export async function exportToDocx(options: DocxExportOptions): Promise<Blob> {
   const {
-    editor,
+    chapterDocs,
     template,
     project,
     includeHeaders = true,
@@ -44,12 +47,17 @@ export async function exportToDocx(options: DocxExportOptions): Promise<Blob> {
 
   const children: Paragraph[] = []
 
-  // Convert ProseMirror document to DOCX paragraphs
-  editor.state.doc.forEach((node) => {
-    const paragraph = convertNodeToParagraph(node, template)
-    if (paragraph) {
-      children.push(paragraph)
+  chapterDocs.forEach((chapterDoc, chapterIndex) => {
+    if (chapterIndex > 0) {
+      // New chapter starts on a new page.
+      children.push(new Paragraph({ children: [new PageBreak()] }))
     }
+    chapterDoc.forEach((node) => {
+      const paragraph = convertNodeToParagraph(node, template)
+      if (paragraph) {
+        children.push(paragraph)
+      }
+    })
   })
 
   // Create header if enabled
