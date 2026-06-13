@@ -1,4 +1,4 @@
-import { Menu, BrowserWindow, app, shell } from 'electron'
+import { Menu, BrowserWindow, shell } from 'electron'
 
 const isMac = process.platform === 'darwin'
 

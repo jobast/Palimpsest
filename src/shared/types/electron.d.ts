@@ -13,11 +13,13 @@ export interface DirectoryResult {
 export interface DialogResult {
   canceled: boolean
   filePaths: string[]
+  error?: string
 }
 
 export interface SaveDialogResult {
   canceled: boolean
   filePath?: string
+  error?: string
 }
 
 export type MenuAction =
@@ -51,6 +53,12 @@ export interface SavePDFResult {
   error?: string
 }
 
+export interface SaveJournalOperationResult {
+  success: boolean
+  error?: string
+  restored?: number
+}
+
 export interface AIKeyStatus {
   encryptionAvailable: boolean
   hasClaudeKey: boolean
@@ -76,13 +84,17 @@ export interface AIChatResponse {
 }
 
 export interface ElectronAPI {
-  openProject: () => Promise<DialogResult>
+  openProject: (suggestedPath?: string) => Promise<DialogResult>
   saveProject: () => Promise<SaveDialogResult>
   readFile: (filePath: string) => Promise<FileResult>
   writeFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
   createDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>
   readDirectory: (dirPath: string) => Promise<DirectoryResult>
   exists: (filePath: string) => Promise<boolean>
+  beginSaveJournal: (projectPath: string) => Promise<SaveJournalOperationResult>
+  commitSaveJournal: (projectPath: string) => Promise<SaveJournalOperationResult>
+  recoverSaveJournal: (projectPath: string) => Promise<SaveJournalOperationResult>
+  hasPendingSaveJournal: (projectPath: string) => Promise<boolean>
   platform: NodeJS.Platform
   onMenuAction: (callback: (action: MenuAction) => void) => void
   removeMenuListeners: () => void

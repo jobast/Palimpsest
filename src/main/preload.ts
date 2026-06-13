@@ -1,8 +1,29 @@
-const { contextBridge, ipcRenderer } = require('electron')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { contextBridge, ipcRenderer } = require('electron') as typeof import('electron')
+
+window.addEventListener('error', (event) => {
+  ipcRenderer.send('renderer:runtime-error', {
+    type: 'error',
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    stack: event.error?.stack
+  })
+})
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason as { message?: string; stack?: string } | string | undefined
+  ipcRenderer.send('renderer:runtime-error', {
+    type: 'unhandledrejection',
+    message: typeof reason === 'string' ? reason : reason?.message || String(reason),
+    stack: typeof reason === 'string' ? undefined : reason?.stack
+  })
+})
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Dialog operations
-  openProject: () => ipcRenderer.invoke('dialog:openProject'),
+  openProject: (suggestedPath?: string) => ipcRenderer.invoke('dialog:openProject', suggestedPath),
   saveProject: () => ipcRenderer.invoke('dialog:saveProject'),
 
   // File system operations
@@ -14,6 +35,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readDirectory: (dirPath: string) =>
     ipcRenderer.invoke('fs:readDirectory', dirPath),
   exists: (filePath: string) => ipcRenderer.invoke('fs:exists', filePath),
+  beginSaveJournal: (projectPath: string) =>
+    ipcRenderer.invoke('fs:beginSaveJournal', projectPath),
+  commitSaveJournal: (projectPath: string) =>
+    ipcRenderer.invoke('fs:commitSaveJournal', projectPath),
+  recoverSaveJournal: (projectPath: string) =>
+    ipcRenderer.invoke('fs:recoverSaveJournal', projectPath),
+  hasPendingSaveJournal: (projectPath: string) =>
+    ipcRenderer.invoke('fs:hasPendingSaveJournal', projectPath),
 
   // App info
   platform: process.platform,

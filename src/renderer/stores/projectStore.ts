@@ -77,8 +77,9 @@ const loadStatsFromDisk = async (projectPath: string): Promise<StatsData> => {
   }
 }
 
-// Check if running in Electron
-const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined
+const hasElectronAPI = (): boolean => {
+  return typeof window !== 'undefined' && window.electronAPI !== undefined
+}
 
 // Recent project entry
 export interface RecentProject {
@@ -198,6 +199,25 @@ const isValidDocumentId = (id: string): boolean => {
   return /^[a-zA-Z0-9_-]+$/.test(id)
 }
 
+const isValidProjectPath = (projectPath: string): boolean => {
+  return projectPath.toLowerCase().endsWith('.palim')
+}
+
+const findFirstValidDocumentId = (items: ManuscriptItem[]): string | null => {
+  for (const item of items) {
+    if (isValidDocumentId(item.id)) {
+      return item.id
+    }
+    if (item.children) {
+      const childId = findFirstValidDocumentId(item.children)
+      if (childId) {
+        return childId
+      }
+    }
+  }
+  return null
+}
+
 // Safe JSON parse with fallback
 const safeJsonParse = <T>(content: string | undefined | null, fallback: T): T => {
   if (!content) return fallback
@@ -206,6 +226,55 @@ const safeJsonParse = <T>(content: string | undefined | null, fallback: T): T =>
   } catch {
     return fallback
   }
+}
+
+const ensureCreateDirectory = async (dirPath: string): Promise<void> => {
+  const result = await window.electronAPI.createDirectory(dirPath)
+  if (!result.success) {
+    throw new Error(`Impossible de creer le dossier: ${dirPath}`)
+  }
+}
+
+const ensureWriteFile = async (filePath: string, content: string): Promise<void> => {
+  const result = await window.electronAPI.writeFile(filePath, content)
+  if (!result.success) {
+    throw new Error(`Impossible d'ecrire le fichier: ${filePath}`)
+  }
+}
+
+const ensureBeginSaveJournal = async (projectPath: string): Promise<void> => {
+  const result = await window.electronAPI.beginSaveJournal(projectPath)
+  if (!result.success) {
+    throw new Error(result.error || 'Impossible de demarrer le journal de sauvegarde')
+  }
+}
+
+const ensureCommitSaveJournal = async (projectPath: string): Promise<void> => {
+  const result = await window.electronAPI.commitSaveJournal(projectPath)
+  if (!result.success) {
+    throw new Error(result.error || 'Impossible de finaliser le journal de sauvegarde')
+  }
+}
+
+const ensureRecoverSaveJournal = async (projectPath: string): Promise<number> => {
+  const result = await window.electronAPI.recoverSaveJournal(projectPath)
+  if (!result.success) {
+    throw new Error(result.error || 'Impossible de recuperer la sauvegarde interrompue')
+  }
+  return result.restored ?? 0
+}
+
+const recoverPendingSaveIfNeeded = async (projectPath: string): Promise<void> => {
+  const hasPending = await window.electronAPI.hasPendingSaveJournal(projectPath)
+  if (!hasPending) {
+    return
+  }
+
+  const restored = await ensureRecoverSaveJournal(projectPath)
+  const message = restored > 0
+    ? `Recuperation automatique effectuee (${restored} fichier(s) restaure(s))`
+    : 'Recuperation automatique effectuee'
+  useStatsStore.getState().showNotification('info', message)
 }
 
 // Load sheets from disk
@@ -279,7 +348,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
-  setActiveDocument: (id) => set({ activeDocumentId: id, activeSheetId: null }),
+  setActiveDocument: (id) => set({
+    activeDocumentId: id && isValidDocumentId(id) ? id : null,
+    activeSheetId: null
+  }),
 
   setActiveSheet: (id) => set({ activeSheetId: id, activeReportId: null }),
 
@@ -306,7 +378,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   openRecentProject: async (projectPath: string) => {
-    if (!isElectron) return
+    if (!hasElectronAPI()) return
+
+    if (!isValidProjectPath(projectPath)) {
+      const { recentProjects } = get()
+      const updated = recentProjects.filter(p => p.path !== projectPath)
+      set({ recentProjects: updated })
+      saveRecentProjectsToStorage(updated)
+      useStatsStore.getState().showNotification('error', 'Chemin de projet invalide (.palim requis)')
+      return
+    }
 
     const exists = await window.electronAPI.exists(projectPath)
     if (!exists) {
@@ -321,6 +402,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     set({ isLoading: true })
     try {
+      await recoverPendingSaveIfNeeded(projectPath)
+
       const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
       const structureResult = await window.electronAPI.readFile(`${projectPath}/manuscript/structure.json`)
 
@@ -381,7 +464,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
-        activeDocumentId: manuscript.items[0]?.id || null
+        activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
 
       // Update recent projects
@@ -687,7 +770,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       useStatsStore.getState().loadStats(project.stats)
 
       // Browser mode: use localStorage
-      if (!isElectron) {
+      if (!hasElectronAPI()) {
         const projectPath = `browser://${project.meta.id}`
         localStorage.setItem(`palimpseste_project_${project.meta.id}`, JSON.stringify(project))
         localStorage.setItem('palimpseste_lastProject', project.meta.id)
@@ -698,7 +781,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           isLoading: false,
           isDirty: false,
           lastDirtyAt: 0,
-          activeDocumentId: project.manuscript.items[0]?.id || null
+          activeDocumentId: findFirstValidDocumentId(project.manuscript.items)
         })
         return
       }
@@ -711,45 +794,48 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const result = await window.electronAPI.saveProject()
         if (result.canceled || !result.filePath) {
           set({ isLoading: false })
+          if (result.error) {
+            useStatsStore.getState().showNotification('error', result.error)
+          }
           return
         }
         filePath = result.filePath
       }
 
-      const projectPath = filePath.endsWith('.palim')
+      const projectPath = isValidProjectPath(filePath)
         ? filePath
         : `${filePath}.palim`
 
       // Create project directory structure
-      await window.electronAPI.createDirectory(projectPath)
-      await window.electronAPI.createDirectory(`${projectPath}/manuscript/documents`)
-      await window.electronAPI.createDirectory(`${projectPath}/sheets/characters`)
-      await window.electronAPI.createDirectory(`${projectPath}/sheets/locations`)
-      await window.electronAPI.createDirectory(`${projectPath}/sheets/plots`)
-      await window.electronAPI.createDirectory(`${projectPath}/sheets/custom`)
-      await window.electronAPI.createDirectory(`${projectPath}/stats`)
-      await window.electronAPI.createDirectory(`${projectPath}/reports`)
-      await window.electronAPI.createDirectory(`${projectPath}/snapshots`)
-      await window.electronAPI.createDirectory(`${projectPath}/trash`)
+      await ensureCreateDirectory(projectPath)
+      await ensureCreateDirectory(`${projectPath}/manuscript/documents`)
+      await ensureCreateDirectory(`${projectPath}/sheets/characters`)
+      await ensureCreateDirectory(`${projectPath}/sheets/locations`)
+      await ensureCreateDirectory(`${projectPath}/sheets/plots`)
+      await ensureCreateDirectory(`${projectPath}/sheets/custom`)
+      await ensureCreateDirectory(`${projectPath}/stats`)
+      await ensureCreateDirectory(`${projectPath}/reports`)
+      await ensureCreateDirectory(`${projectPath}/snapshots`)
+      await ensureCreateDirectory(`${projectPath}/trash`)
 
       // Write project files
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/project.json`,
         JSON.stringify(project.meta, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/manuscript/structure.json`,
         JSON.stringify(project.manuscript, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/stats/sessions.json`,
         JSON.stringify(project.stats.sessions, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/stats/goals.json`,
         JSON.stringify(project.stats.goals, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/stats/stats.json`,
         JSON.stringify({
           dailyStats: project.stats.dailyStats,
@@ -758,7 +844,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           manuscriptMode: project.stats.manuscriptMode
         }, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/reports/reports.json`,
         JSON.stringify(project.reports, null, 2)
       )
@@ -769,7 +855,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
-        activeDocumentId: project.manuscript.items[0]?.id || null
+        activeDocumentId: findFirstValidDocumentId(project.manuscript.items)
       })
       localStorage.setItem('lastProjectPath', projectPath)
 
@@ -794,20 +880,45 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   openProject: async () => {
     // Browser mode: not supported, show alert
-    if (!isElectron) {
+    if (!hasElectronAPI()) {
       alert('Ouvrir un projet n\'est pas supporté en mode navigateur. Utilisez Electron.')
       return
     }
 
     set({ isLoading: true })
     try {
-      const result = await window.electronAPI.openProject()
+      const currentProjectPath = get().projectPath
+      const lastProjectPath = localStorage.getItem('lastProjectPath')
+      const suggestedPath = currentProjectPath && !currentProjectPath.startsWith('browser://')
+        ? currentProjectPath
+        : (lastProjectPath || undefined)
+
+      const result = await window.electronAPI.openProject(suggestedPath)
       if (result.canceled || result.filePaths.length === 0) {
         set({ isLoading: false })
+        if (result.error) {
+          useStatsStore.getState().showNotification('error', result.error)
+          return
+        }
+
+        const manualPath = window.prompt(
+          'Le sélecteur de fichiers est vide. Collez le chemin complet du projet .palim :',
+          suggestedPath || ''
+        )
+        if (manualPath && manualPath.trim()) {
+          await get().openRecentProject(manualPath.trim())
+        }
         return
       }
 
       const projectPath = result.filePaths[0]
+      if (!isValidProjectPath(projectPath)) {
+        set({ isLoading: false })
+        useStatsStore.getState().showNotification('error', 'Chemin de projet invalide (.palim requis)')
+        return
+      }
+
+      await recoverPendingSaveIfNeeded(projectPath)
 
       // Read project files
       const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
@@ -870,7 +981,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
-        activeDocumentId: manuscript.items[0]?.id || null
+        activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
       localStorage.setItem('lastProjectPath', projectPath)
 
@@ -910,11 +1021,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const hasOverrides = Object.keys(typographyOverrides).length > 0
     const stats = useStatsStore.getState().exportStats()
     const saveStartedAt = Date.now()
+    let saveJournalStarted = false
 
     set({ isSaving: true })
     try {
       // Browser mode: save to localStorage
-      if (!isElectron || projectPath.startsWith('browser://')) {
+      if (!hasElectronAPI() || projectPath.startsWith('browser://')) {
         const projectId = project.meta.id
         const updatedProject = {
           ...project,
@@ -936,6 +1048,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
 
       // Electron mode - include typography overrides
+      await ensureBeginSaveJournal(projectPath)
+      saveJournalStarted = true
+
       const updatedMeta = {
         ...project.meta,
         updatedAt: new Date().toISOString(),
@@ -946,23 +1061,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         meta: updatedMeta,
         stats
       }
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/project.json`,
         JSON.stringify(updatedMeta, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/manuscript/structure.json`,
         JSON.stringify(project.manuscript, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/stats/sessions.json`,
         JSON.stringify(stats.sessions, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/stats/goals.json`,
         JSON.stringify(stats.goals, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/stats/stats.json`,
         JSON.stringify({
           dailyStats: stats.dailyStats,
@@ -974,39 +1089,44 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       // Save document contents
       const documentContents = useEditorStore.getState().getAllDocumentContents()
+      for (const documentId of documentContents.keys()) {
+        if (!isValidDocumentId(documentId)) {
+          throw new Error(`ID de document invalide: ${documentId}`)
+        }
+      }
       for (const [documentId, content] of documentContents) {
-        const result = await window.electronAPI.writeFile(
+        await ensureWriteFile(
           `${projectPath}/manuscript/documents/${documentId}.json`,
           content
         )
-        if (!result.success) {
-          console.error(`Failed to save document ${documentId}:`, result.error)
-        }
       }
 
       // Save sheets
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/sheets/characters.json`,
         JSON.stringify(project.sheets.characters, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/sheets/locations.json`,
         JSON.stringify(project.sheets.locations, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/sheets/plots.json`,
         JSON.stringify(project.sheets.plots, null, 2)
       )
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/sheets/notes.json`,
         JSON.stringify(project.sheets.notes, null, 2)
       )
 
       // Save reports
-      await window.electronAPI.writeFile(
+      await ensureWriteFile(
         `${projectPath}/reports/reports.json`,
         JSON.stringify(project.reports, null, 2)
       )
+
+      await ensureCommitSaveJournal(projectPath)
+      saveJournalStarted = false
 
       set((state) => ({
         project: updatedProject,
@@ -1017,6 +1137,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       useStatsStore.getState().showNotification('success', 'Projet sauvegardé')
     } catch (error) {
       console.error('Failed to save project:', error)
+      if (saveJournalStarted) {
+        try {
+          const restored = await ensureRecoverSaveJournal(projectPath)
+          const rollbackMessage = restored > 0
+            ? `Sauvegarde annulee et restauration de ${restored} fichier(s)`
+            : 'Sauvegarde annulee'
+          useStatsStore.getState().showNotification('info', rollbackMessage)
+        } catch (recoveryError) {
+          console.error('Failed to recover interrupted save:', recoveryError)
+        }
+      }
       set({ isSaving: false })
       useStatsStore.getState().showNotification('error', 'Erreur lors de la sauvegarde')
     }
@@ -1024,7 +1155,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   loadLastProject: async () => {
     // Browser mode: load from localStorage
-    if (!isElectron) {
+    if (!hasElectronAPI()) {
       const lastProjectId = localStorage.getItem('palimpseste_lastProject')
       if (!lastProjectId) return
 
@@ -1039,7 +1170,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           isLoading: false,
           isDirty: false,
           lastDirtyAt: 0,
-          activeDocumentId: project.manuscript.items[0]?.id || null
+          activeDocumentId: findFirstValidDocumentId(project.manuscript.items)
         })
 
         // Load typography overrides into editor store
@@ -1057,12 +1188,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // Electron mode
     const lastPath = localStorage.getItem('lastProjectPath')
     if (!lastPath) return
+    if (!isValidProjectPath(lastPath)) {
+      localStorage.removeItem('lastProjectPath')
+      return
+    }
 
     const exists = await window.electronAPI.exists(lastPath)
     if (!exists) {
       localStorage.removeItem('lastProjectPath')
       return
     }
+
+    await recoverPendingSaveIfNeeded(lastPath)
 
     set({ isLoading: true })
     try {
@@ -1124,7 +1261,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
-        activeDocumentId: manuscript.items[0]?.id || null
+        activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
     } catch (error) {
       console.error('Failed to load last project:', error)

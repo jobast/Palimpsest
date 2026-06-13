@@ -3,16 +3,76 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 import { createApplicationMenu } from './menu'
+import {
+  assertProjectRootPath,
+  assertProjectScopedPath,
+  writeTextFileAtomic
+} from './projectPaths.js'
+import {
+  normalizeSaveProjectSelection,
+  validateOpenProjectSelection
+} from './projectDialogs.js'
+import {
+  beginSaveJournal,
+  commitSaveJournal,
+  hasPendingSaveJournal,
+  recoverSaveJournal,
+  trackBackupForWrite
+} from './saveRecovery.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const RUNTIME_LOG_PATH = '/tmp/palimpseste-runtime.log'
+
+function logRuntime(event: string, payload?: unknown): void {
+  const timestamp = new Date().toISOString()
+  const details = payload === undefined ? '' : ` ${JSON.stringify(payload, null, 2)}`
+  const line = `[${timestamp}] ${event}${details}\n`
+  try {
+    fs.appendFileSync(RUNTIME_LOG_PATH, line, 'utf8')
+  } catch {
+    // Ignore log write failures.
+  }
+}
+
+function suppressBrokenPipeCrashes(): void {
+  const ignoreBrokenPipe = (stream: NodeJS.WriteStream | undefined) => {
+    if (!stream) return
+    stream.on('error', (error: NodeJS.ErrnoException) => {
+      if (error?.code === 'EPIPE') {
+        return
+      }
+    })
+  }
+
+  ignoreBrokenPipe(process.stdout)
+  ignoreBrokenPipe(process.stderr)
+}
 
 // Set app name for macOS menu bar (must be before app.whenReady)
 app.setName('Palimpseste')
+suppressBrokenPipeCrashes()
+
+process.on('uncaughtException', (error) => {
+  console.error('[electron] uncaughtException:', error)
+  logRuntime('uncaughtException', { message: error.message, stack: error.stack })
+})
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[electron] unhandledRejection:', reason)
+  logRuntime('unhandledRejection', { reason: String(reason) })
+})
 
 let mainWindow: BrowserWindow | null = null
 
-const isDev = process.env.NODE_ENV !== 'production'
+const devServerUrl = process.env.VITE_DEV_SERVER_URL
+const isDev = !app.isPackaged && typeof devServerUrl === 'string' && devServerUrl.length > 0
+const openDevTools = process.env.PALIM_OPEN_DEVTOOLS === '1'
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) {
+  app.quit()
+}
 
 type AIProvider = 'claude' | 'openai' | 'ollama'
 
@@ -64,8 +124,15 @@ async function writeStoredAIKeys(data: StoredAIKeysFile): Promise<void> {
   await fs.promises.writeFile(keysPath, payload, 'utf-8')
 }
 
-function encryptKey(plain: string): { value: string; encrypted: boolean } {
-  if (safeStorage.isEncryptionAvailable()) {
+function encryptKey(
+  plain: string,
+  forceEncrypted?: boolean
+): { value: string; encrypted: boolean } {
+  const shouldEncrypt = forceEncrypted ?? safeStorage.isEncryptionAvailable()
+  if (shouldEncrypt) {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Chiffrement indisponible sur cette machine')
+    }
     const encrypted = safeStorage.encryptString(plain).toString('base64')
     return { value: encrypted, encrypted: true }
   }
@@ -75,7 +142,10 @@ function encryptKey(plain: string): { value: string; encrypted: boolean } {
 
 function decryptKey(value: string, encrypted: boolean): string {
   const buf = Buffer.from(value, 'base64')
-  if (encrypted && safeStorage.isEncryptionAvailable()) {
+  if (encrypted) {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Chiffrement indisponible sur cette machine')
+    }
     return safeStorage.decryptString(buf)
   }
   return buf.toString('utf-8')
@@ -90,11 +160,15 @@ function keyHint(key: string): string {
 async function getKeyForProvider(provider: AIProvider): Promise<string | null> {
   const stored = await readStoredAIKeys()
   const encrypted = stored.encrypted
-  if (provider === 'claude' && stored.claude) {
-    return decryptKey(stored.claude, encrypted)
-  }
-  if (provider === 'openai' && stored.openai) {
-    return decryptKey(stored.openai, encrypted)
+  try {
+    if (provider === 'claude' && stored.claude) {
+      return decryptKey(stored.claude, encrypted)
+    }
+    if (provider === 'openai' && stored.openai) {
+      return decryptKey(stored.openai, encrypted)
+    }
+  } catch {
+    return null
   }
   return null
 }
@@ -303,9 +377,11 @@ function createWindow() {
     }
   })
 
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
+  if (isDev && devServerUrl) {
+    mainWindow.loadURL(devServerUrl)
+    if (openDevTools) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    }
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
@@ -314,9 +390,42 @@ function createWindow() {
     mainWindow = null
   })
 
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const levelLabel = ['debug', 'info', 'warn', 'error'][level] || 'log'
+    console.log(`[renderer:${levelLabel}] ${sourceId}:${line} ${message}`)
+    logRuntime('renderer.console', { level: levelLabel, sourceId, line, message })
+  })
+
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    console.error('[electron] preload-error:', preloadPath, error)
+    logRuntime('preload-error', { preloadPath, message: error.message, stack: error.stack })
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[electron] renderer process gone:', details)
+    logRuntime('render-process-gone', details)
+  })
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('[electron] did-fail-load:', { errorCode, errorDescription, validatedURL })
+    logRuntime('did-fail-load', { errorCode, errorDescription, validatedURL })
+  })
+
   // Create application menu
   createApplicationMenu(mainWindow)
 }
+
+app.on('second-instance', () => {
+  logRuntime('app.second-instance')
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.focus()
+    return
+  }
+  createWindow()
+})
 
 app.whenReady().then(() => {
   createWindow()
@@ -334,25 +443,87 @@ app.on('window-all-closed', () => {
   }
 })
 
-// IPC Handlers for file operations
-ipcMain.handle('dialog:openProject', async () => {
-  const result = await dialog.showOpenDialog(mainWindow!, {
-    properties: ['openDirectory', 'treatPackageAsDirectory'],
-    message: 'Sélectionnez un dossier de projet Palimpseste (.palim)'
+app.on('render-process-gone', (_event, webContents, details) => {
+  logRuntime('app.render-process-gone', {
+    id: webContents.id,
+    url: webContents.getURL(),
+    details
   })
-  return result
+})
+
+app.on('child-process-gone', (_event, details) => {
+  logRuntime('app.child-process-gone', details)
+})
+
+function resolveOpenDialogDefaultPath(suggestedPath?: string): string | undefined {
+  const candidates: string[] = []
+
+  if (typeof suggestedPath === 'string' && suggestedPath.trim().length > 0) {
+    const resolved = path.resolve(suggestedPath)
+    try {
+      if (fs.existsSync(resolved)) {
+        const stat = fs.statSync(resolved)
+        if (stat.isDirectory()) {
+          // If pointing to a project package, start from its parent so the user sees choices.
+          if (path.basename(resolved).toLowerCase().endsWith('.palim')) {
+            candidates.push(path.dirname(resolved))
+          }
+          candidates.push(resolved)
+        } else {
+          candidates.push(path.dirname(resolved))
+        }
+      }
+    } catch {
+      candidates.push(path.dirname(resolved))
+    }
+  }
+
+  candidates.push(app.getPath('home'))
+  candidates.push(process.cwd())
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return undefined
+}
+
+// IPC Handlers for file operations
+ipcMain.handle('dialog:openProject', async (_, suggestedPath?: string) => {
+  const defaultPath = resolveOpenDialogDefaultPath(suggestedPath)
+  console.log('[dialog:openProject] suggestedPath=', suggestedPath, 'defaultPath=', defaultPath)
+  logRuntime('dialog:openProject.request', { suggestedPath, defaultPath })
+  const result = await dialog.showOpenDialog({
+    defaultPath,
+    properties: ['openDirectory', 'treatPackageAsDirectory', 'createDirectory'],
+    message: 'Selectionnez un projet Palimpseste (.palim)'
+  })
+  console.log('[dialog:openProject] result=', { canceled: result.canceled, filePaths: result.filePaths })
+  logRuntime('dialog:openProject.result', { canceled: result.canceled, filePaths: result.filePaths })
+  return validateOpenProjectSelection(result)
+})
+
+ipcMain.on('renderer:runtime-error', (_event, payload: unknown) => {
+  logRuntime('renderer:runtime-error', payload)
 })
 
 ipcMain.handle('dialog:saveProject', async () => {
   const result = await dialog.showSaveDialog(mainWindow!, {
     filters: [{ name: 'Palimpseste Project', extensions: ['palim'] }]
   })
-  return result
+  return normalizeSaveProjectSelection(result)
 })
 
 ipcMain.handle('fs:readFile', async (_, filePath: string) => {
   try {
-    const content = await fs.promises.readFile(filePath, 'utf-8')
+    const { safePath } = await assertProjectScopedPath(filePath)
+    const content = await fs.promises.readFile(safePath, 'utf-8')
     return { success: true, content }
   } catch (error) {
     return { success: false, error: String(error) }
@@ -361,7 +532,9 @@ ipcMain.handle('fs:readFile', async (_, filePath: string) => {
 
 ipcMain.handle('fs:writeFile', async (_, filePath: string, content: string) => {
   try {
-    await fs.promises.writeFile(filePath, content, 'utf-8')
+    const { safePath, safeProjectRoot } = await assertProjectScopedPath(filePath)
+    await trackBackupForWrite(safeProjectRoot, safePath)
+    await writeTextFileAtomic(safePath, content)
     return { success: true }
   } catch (error) {
     return { success: false, error: String(error) }
@@ -370,7 +543,8 @@ ipcMain.handle('fs:writeFile', async (_, filePath: string, content: string) => {
 
 ipcMain.handle('fs:createDirectory', async (_, dirPath: string) => {
   try {
-    await fs.promises.mkdir(dirPath, { recursive: true })
+    const { safePath } = await assertProjectScopedPath(dirPath)
+    await fs.promises.mkdir(safePath, { recursive: true })
     return { success: true }
   } catch (error) {
     return { success: false, error: String(error) }
@@ -379,7 +553,8 @@ ipcMain.handle('fs:createDirectory', async (_, dirPath: string) => {
 
 ipcMain.handle('fs:readDirectory', async (_, dirPath: string) => {
   try {
-    const files = await fs.promises.readdir(dirPath, { withFileTypes: true })
+    const { safePath } = await assertProjectScopedPath(dirPath)
+    const files = await fs.promises.readdir(safePath, { withFileTypes: true })
     return {
       success: true,
       files: files.map(f => ({
@@ -394,8 +569,48 @@ ipcMain.handle('fs:readDirectory', async (_, dirPath: string) => {
 
 ipcMain.handle('fs:exists', async (_, filePath: string) => {
   try {
-    await fs.promises.access(filePath)
+    const { safePath } = await assertProjectScopedPath(filePath)
+    await fs.promises.access(safePath)
     return true
+  } catch {
+    return false
+  }
+})
+
+ipcMain.handle('fs:beginSaveJournal', async (_, projectPath: string) => {
+  try {
+    const { safeProjectRoot } = await assertProjectRootPath(projectPath)
+    await beginSaveJournal(safeProjectRoot)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('fs:commitSaveJournal', async (_, projectPath: string) => {
+  try {
+    const { safeProjectRoot } = await assertProjectRootPath(projectPath)
+    await commitSaveJournal(safeProjectRoot)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('fs:recoverSaveJournal', async (_, projectPath: string) => {
+  try {
+    const { safeProjectRoot } = await assertProjectRootPath(projectPath)
+    const result = await recoverSaveJournal(safeProjectRoot)
+    return { success: true, restored: result.restored }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('fs:hasPendingSaveJournal', async (_, projectPath: string) => {
+  try {
+    const { safeProjectRoot } = await assertProjectRootPath(projectPath)
+    return await hasPendingSaveJournal(safeProjectRoot)
   } catch {
     return false
   }
@@ -436,8 +651,7 @@ ipcMain.handle('export:printToPDF', async (_, options: {
         left: options.margins.left / 1000,
         right: options.margins.right / 1000
       },
-      printBackground: true,
-      printSelectionOnly: false
+      printBackground: true
     })
 
     return { success: true, data: pdfData }
@@ -473,8 +687,18 @@ ipcMain.handle('export:savePDF', async (_, data: Buffer, defaultFilename: string
 ipcMain.handle('ai:getKeyStatus', async () => {
   const stored = await readStoredAIKeys()
   const encrypted = stored.encrypted
-  const claudeKey = stored.claude ? decryptKey(stored.claude, encrypted) : ''
-  const openaiKey = stored.openai ? decryptKey(stored.openai, encrypted) : ''
+  let claudeKey = ''
+  let openaiKey = ''
+  try {
+    claudeKey = stored.claude ? decryptKey(stored.claude, encrypted) : ''
+  } catch {
+    claudeKey = ''
+  }
+  try {
+    openaiKey = stored.openai ? decryptKey(stored.openai, encrypted) : ''
+  } catch {
+    openaiKey = ''
+  }
 
   return {
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
@@ -494,8 +718,7 @@ ipcMain.handle('ai:setApiKey', async (_event, payload: { provider: AIProvider; k
 
   if (provider === 'claude') {
     if (key && key.trim().length > 0) {
-      const encryptedKey = encryptKey(key.trim())
-      updated.encrypted = encryptedKey.encrypted
+      const encryptedKey = encryptKey(key.trim(), stored.encrypted)
       updated.claude = encryptedKey.value
       updated.openai = stored.openai
     } else {
@@ -505,8 +728,7 @@ ipcMain.handle('ai:setApiKey', async (_event, payload: { provider: AIProvider; k
 
   if (provider === 'openai') {
     if (key && key.trim().length > 0) {
-      const encryptedKey = encryptKey(key.trim())
-      updated.encrypted = encryptedKey.encrypted
+      const encryptedKey = encryptKey(key.trim(), stored.encrypted)
       updated.openai = encryptedKey.value
       updated.claude = stored.claude
     } else {
