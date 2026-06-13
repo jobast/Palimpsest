@@ -24,13 +24,12 @@ import {
   FileCheck,
   Map,
   Bot,
-  Sparkles,
-  X,
-  Save
+  Sparkles
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { countSections } from '@shared/markdown'
 import type { ManuscriptItem, LocationSheet, CharacterSheet, PlotSheet, AIReport } from '@shared/types/project'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { GlobalMapView } from '../maps/GlobalMapView'
 import {
   ContextMenu,
@@ -119,9 +118,12 @@ function ManuscriptPanel() {
     deleteManuscriptItem,
     duplicateManuscriptItem,
     renameChapter,
-    loadChapterNote,
-    saveChapterNote
+    setActiveNote,
+    chaptersWithNote,
+    activeNoteId
   } = useProjectStore()
+  const documentContents = useEditorStore((s) => s.documentContents)
+  const requestSectionScroll = useEditorStore((s) => s.requestSectionScroll)
 
   if (!project) return null
 
@@ -152,21 +154,27 @@ function ManuscriptPanel() {
       </div>
 
       <div className="space-y-0.5">
-        {project.manuscript.items.map((item) => (
-          <ManuscriptTreeItem
-            key={item.id}
-            item={item}
-            activeId={activeDocumentId}
-            onSelect={setActiveDocument}
-            onUpdate={updateManuscriptItem}
-            onRename={renameChapter}
-            onDelete={deleteManuscriptItem}
-            onDuplicate={duplicateManuscriptItem}
-            onLoadNote={loadChapterNote}
-            onSaveNote={saveChapterNote}
-            depth={0}
-          />
-        ))}
+        {project.manuscript.items.map((item) => {
+          const sectionCount = countSections(documentContents.get(item.id))
+          return (
+            <ManuscriptTreeItem
+              key={item.id}
+              item={item}
+              activeId={activeDocumentId}
+              onSelect={setActiveDocument}
+              onUpdate={updateManuscriptItem}
+              onRename={renameChapter}
+              onDelete={deleteManuscriptItem}
+              onDuplicate={duplicateManuscriptItem}
+              hasNote={chaptersWithNote.has(item.id)}
+              sectionCount={sectionCount}
+              onSelectSection={(index) => { setActiveDocument(item.id); requestSectionScroll(index) }}
+              onOpenNote={() => setActiveNote(item.id)}
+              activeNoteId={activeNoteId}
+              depth={0}
+            />
+          )
+        })}
       </div>
     </div>
   )
@@ -180,8 +188,11 @@ function ManuscriptTreeItem({
   onRename,
   onDelete,
   onDuplicate,
-  onLoadNote,
-  onSaveNote,
+  hasNote,
+  sectionCount,
+  onSelectSection,
+  onOpenNote,
+  activeNoteId,
   depth
 }: {
   item: ManuscriptItem
@@ -191,44 +202,17 @@ function ManuscriptTreeItem({
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
-  onLoadNote: (id: string) => Promise<string>
-  onSaveNote: (id: string, note: string) => Promise<void>
+  hasNote: boolean
+  sectionCount: number
+  onSelectSection: (index: number) => void
+  onOpenNote: () => void
+  activeNoteId: string | null
   depth: number
 }) {
   const [expanded, setExpanded] = useState(true)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(item.title)
-  const [noteOpen, setNoteOpen] = useState(false)
-  const [noteValue, setNoteValue] = useState('')
-  const [noteLoading, setNoteLoading] = useState(false)
-  const hasChildren = item.children && item.children.length > 0
-
-  const handleOpenNote = async () => {
-    setNoteLoading(true)
-    setNoteOpen(true)
-    const content = await onLoadNote(item.id)
-    setNoteValue(content)
-    setNoteLoading(false)
-  }
-
-  const handleSaveNote = async () => {
-    await onSaveNote(item.id, noteValue)
-    setNoteOpen(false)
-  }
-
-  const handleCloseNote = () => {
-    setNoteOpen(false)
-  }
-
-  // Close on Escape
-  useEffect(() => {
-    if (!noteOpen) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleCloseNote()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [noteOpen])
+  const hasDerivedChildren = sectionCount >= 2 || hasNote
 
   const icon = item.type === 'folder' ? <Folder size={14} /> : <FileText size={14} />
 
@@ -259,7 +243,7 @@ function ManuscriptTreeItem({
             )}
             style={{ paddingLeft: `${depth * 12 + 8}px` }}
           >
-            {hasChildren && (
+            {hasDerivedChildren && (
               <span
                 onClick={(e) => {
                   e.stopPropagation()
@@ -270,7 +254,7 @@ function ManuscriptTreeItem({
                 {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </span>
             )}
-            {!hasChildren && <span className="w-4" />}
+            {!hasDerivedChildren && <span className="w-4" />}
             {icon}
             {isRenaming ? (
               <input
@@ -347,7 +331,7 @@ function ManuscriptTreeItem({
                 <Plus size={14} className="mr-2" />
                 Insérer un saut de scène
               </ContextMenuItem>
-              <ContextMenuItem onClick={handleOpenNote}>
+              <ContextMenuItem onClick={onOpenNote}>
                 <StickyNote size={14} className="mr-2" />
                 Note du chapitre
               </ContextMenuItem>
@@ -366,78 +350,34 @@ function ManuscriptTreeItem({
         </ContextMenuContent>
       </ContextMenu>
 
-      {/* Private chapter note dialog */}
-      {noteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={handleCloseNote}
-          />
-          <div className="relative bg-background rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="flex items-center gap-2">
-                <StickyNote size={16} className="text-muted-foreground" />
-                <h2 className="text-sm font-semibold">Note — {item.title}</h2>
-              </div>
-              <button
-                onClick={handleCloseNote}
-                className="p-1 rounded hover:bg-accent transition-colors"
-              >
-                <X size={16} className="text-muted-foreground" />
-              </button>
-            </div>
-            <div className="p-4">
-              {noteLoading ? (
-                <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
-                  Chargement...
-                </div>
-              ) : (
-                <textarea
-                  value={noteValue}
-                  onChange={(e) => setNoteValue(e.target.value)}
-                  placeholder="Note privée (jamais exportée, jamais incluse dans le manuscrit)..."
-                  className="w-full h-40 resize-none rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  autoFocus
-                />
-              )}
-            </div>
-            <div className="flex justify-end gap-2 px-4 py-3 border-t border-border">
-              <button
-                onClick={handleCloseNote}
-                className="px-3 py-1.5 text-sm rounded hover:bg-accent transition-colors"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleSaveNote}
-                disabled={noteLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-              >
-                <Save size={14} />
-                Enregistrer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {hasChildren && expanded && (
+      {expanded && hasDerivedChildren && (
         <div>
-          {item.children!.map((child) => (
-            <ManuscriptTreeItem
-              key={child.id}
-              item={child}
-              activeId={activeId}
-              onSelect={onSelect}
-              onUpdate={onUpdate}
-              onRename={onRename}
-              onDelete={onDelete}
-              onDuplicate={onDuplicate}
-              onLoadNote={onLoadNote}
-              onSaveNote={onSaveNote}
-              depth={depth + 1}
-            />
+          {sectionCount >= 2 && Array.from({ length: sectionCount }, (_, i) => (
+            <button
+              key={`sec-${i}`}
+              onClick={() => onSelectSection(i + 1)}
+              className="w-full flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:bg-accent"
+              style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
+            >
+              <span className="w-4" />
+              <FileText size={12} />
+              <span className="truncate flex-1 text-left">Section {i + 1}</span>
+            </button>
           ))}
+          {hasNote && (
+            <button
+              onClick={onOpenNote}
+              className={cn(
+                'w-full flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-accent',
+                activeNoteId === item.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+              )}
+              style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
+            >
+              <span className="w-4" />
+              <StickyNote size={12} />
+              <span className="truncate flex-1 text-left">Note</span>
+            </button>
+          )}
         </div>
       )}
     </div>
