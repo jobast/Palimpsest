@@ -108,6 +108,7 @@ interface ProjectState {
   chaptersWithNote: Set<string>   // chapter ids that have a .note.md sidecar
   activeSheetId: string | null  // Currently edited sheet (null = editing manuscript)
   activeReportId: string | null  // Currently viewed report
+  activeNoteId: string | null   // chapter id whose private note is open (center view)
   recentProjects: RecentProject[]
 
   // Actions
@@ -116,6 +117,7 @@ interface ProjectState {
   setActiveDocument: (id: string | null) => void
   setActiveSheet: (id: string | null) => void
   setActiveReport: (id: string | null) => void
+  setActiveNote: (id: string | null) => void
   setDirty: (dirty: boolean) => void
   addToRecentProjects: (project: RecentProject) => void
   loadRecentProjects: () => void
@@ -383,10 +385,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   chaptersWithNote: new Set<string>(),
   activeSheetId: null,
   activeReportId: null,
+  activeNoteId: null,
   recentProjects: loadRecentProjectsFromStorage(),
 
   setProject: (project, path) => {
-    set({ project, projectPath: path, isDirty: false, lastDirtyAt: 0, activeSheetId: null, activeReportId: null, chaptersWithNote: new Set() })
+    set({ project, projectPath: path, isDirty: false, lastDirtyAt: 0, activeSheetId: null, activeReportId: null, activeNoteId: null, chaptersWithNote: new Set() })
     localStorage.setItem('lastProjectPath', path)
   },
 
@@ -401,12 +404,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setActiveDocument: (id) => set({
     activeDocumentId: id && isValidDocumentId(id) ? id : null,
-    activeSheetId: null
+    activeSheetId: null,
+    activeNoteId: null
   }),
 
-  setActiveSheet: (id) => set({ activeSheetId: id, activeReportId: null }),
+  setActiveSheet: (id) => set({ activeSheetId: id, activeReportId: null, activeNoteId: null }),
 
-  setActiveReport: (id) => set({ activeReportId: id, activeSheetId: null }),
+  setActiveReport: (id) => set({ activeReportId: id, activeSheetId: null, activeNoteId: null }),
+
+  setActiveNote: (id) => set({
+    activeNoteId: id,
+    activeDocumentId: null,
+    activeSheetId: null,
+    activeReportId: null
+  }),
 
   setDirty: (dirty) => set((state) => ({
     isDirty: dirty,
