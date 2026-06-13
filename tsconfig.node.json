@@ -8,5 +8,5 @@
     "strict": true,
     "outDir": "dist/main"
   },
-  "include": ["src/main", "vite.config.ts", "electron.vite.config.ts"]
+  "include": ["src/main", "src/shared", "vite.config.ts", "electron.vite.config.ts"]
 }
