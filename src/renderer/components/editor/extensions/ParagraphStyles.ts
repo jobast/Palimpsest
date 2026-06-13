@@ -1,5 +1,4 @@
-import { Node, mergeAttributes, canInsertNode, isNodeSelection } from '@tiptap/core'
-import { TextSelection, NodeSelection } from '@tiptap/pm/state'
+import { Node, mergeAttributes, canInsertNode } from '@tiptap/core'
 
 export interface SceneBreakOptions {
   HTMLAttributes: Record<string, unknown>
@@ -29,62 +28,24 @@ export const SceneBreak = Node.create<SceneBreakOptions>({
 
   addCommands() {
     return {
-      // Modeled on TipTap's setHorizontalRule: handles block boundaries, keeps
-      // the cursor sane afterward, and never lands before the chapter title.
+      // Insert the break followed by an empty paragraph (the start of the next
+      // scene). TipTap places the cursor in that paragraph — we never build a
+      // manual selection, which avoids invalid-selection errors with this atom
+      // node. The break is never placed before/inside the chapter title.
       insertSceneBreak:
         () =>
-        ({ chain, state }) => {
+        ({ commands, state }) => {
           if (!canInsertNode(state, state.schema.nodes[this.name])) {
             return false
           }
-
-          const { selection } = state
-          const { $from: $originFrom, $to: $originTo } = selection
+          const { $from } = state.selection
           const firstChild = state.doc.firstChild
-          // Caret sitting in the chapter title (the mandatory first node).
-          const inTitle = firstChild?.type.name === 'chapterTitle' && $originFrom.index(0) === 0
-          const currentChain = chain()
-
+          const inTitle = firstChild?.type.name === 'chapterTitle' && $from.index(0) === 0
+          const content = [{ type: this.name }, { type: 'paragraph' }]
           if (inTitle) {
-            // Insert right after the title, never before/inside it.
-            currentChain.insertContentAt(firstChild!.nodeSize, { type: this.name })
-          } else if ($originFrom.parentOffset === 0) {
-            currentChain.insertContentAt(
-              { from: Math.max($originFrom.pos - 1, 0), to: $originTo.pos },
-              { type: this.name }
-            )
-          } else if (isNodeSelection(selection)) {
-            currentChain.insertContentAt($originTo.pos, { type: this.name })
-          } else {
-            currentChain.insertContent({ type: this.name })
+            return commands.insertContentAt(firstChild!.nodeSize, content)
           }
-
-          return currentChain
-            .command(({ tr, dispatch }) => {
-              if (dispatch) {
-                const { $to } = tr.selection
-                const posAfter = $to.end()
-                if ($to.nodeAfter) {
-                  if ($to.nodeAfter.isTextblock) {
-                    tr.setSelection(TextSelection.create(tr.doc, $to.pos + 1))
-                  } else if ($to.nodeAfter.isBlock) {
-                    tr.setSelection(NodeSelection.create(tr.doc, $to.pos))
-                  } else {
-                    tr.setSelection(TextSelection.create(tr.doc, $to.pos))
-                  }
-                } else {
-                  // At the end of the doc: add a paragraph after the break.
-                  const node = $to.parent.type.contentMatch.defaultType?.create()
-                  if (node) {
-                    tr.insert(posAfter, node)
-                    tr.setSelection(TextSelection.create(tr.doc, posAfter + 1))
-                  }
-                }
-                tr.scrollIntoView()
-              }
-              return true
-            })
-            .run()
+          return commands.insertContent(content)
         }
     }
   },
