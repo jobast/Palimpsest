@@ -162,7 +162,6 @@ function ManuscriptPanel() {
             onRename={renameChapter}
             onDelete={deleteManuscriptItem}
             onDuplicate={duplicateManuscriptItem}
-            onAddChild={addManuscriptItem}
             onLoadNote={loadChapterNote}
             onSaveNote={saveChapterNote}
             depth={0}
@@ -181,7 +180,6 @@ function ManuscriptTreeItem({
   onRename,
   onDelete,
   onDuplicate,
-  onAddChild,
   onLoadNote,
   onSaveNote,
   depth
@@ -193,7 +191,6 @@ function ManuscriptTreeItem({
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
-  onAddChild: (item: ManuscriptItem, parentId?: string) => void
   onLoadNote: (id: string) => Promise<string>
   onSaveNote: (id: string, note: string) => Promise<void>
   depth: number
@@ -240,16 +237,6 @@ function ManuscriptTreeItem({
       onRename(item.id, renameValue.trim())
     }
     setIsRenaming(false)
-  }
-
-  const handleAddScene = () => {
-    onAddChild({
-      id: crypto.randomUUID(),
-      type: 'scene',
-      title: `Scene ${(item.children?.length || 0) + 1}`,
-      status: 'draft',
-      wordCount: 0
-    }, item.id)
   }
 
   const statusIcons = {
@@ -353,9 +340,12 @@ function ManuscriptTreeItem({
           {item.type === 'chapter' && (
             <>
               <ContextMenuSeparator />
-              <ContextMenuItem onClick={handleAddScene}>
+              <ContextMenuItem onClick={() => {
+                const ed = useEditorStore.getState().editor
+                if (ed) ed.chain().focus().insertSceneBreak().run()
+              }}>
                 <Plus size={14} className="mr-2" />
-                Ajouter une scene
+                Insérer un saut de scène
               </ContextMenuItem>
               <ContextMenuItem onClick={handleOpenNote}>
                 <StickyNote size={14} className="mr-2" />
@@ -443,7 +433,6 @@ function ManuscriptTreeItem({
               onRename={onRename}
               onDelete={onDelete}
               onDuplicate={onDuplicate}
-              onAddChild={onAddChild}
               onLoadNote={onLoadNote}
               onSaveNote={onSaveNote}
               depth={depth + 1}
