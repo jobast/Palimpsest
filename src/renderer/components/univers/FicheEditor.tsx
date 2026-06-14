@@ -9,12 +9,20 @@ export function FicheEditor() {
   const [draft, setDraft] = useState<Fiche | null>(fiche)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const key = fiche ? ficheKey(fiche) : null
+  // Latest draft, so the unmount/switch cleanup can flush a pending save.
+  const latest = useRef<Fiche | null>(draft)
+  latest.current = draft
 
   // Reload the draft when the active fiche changes.
   useEffect(() => { setDraft(fiche) /* eslint-disable-next-line */ }, [key])
 
-  // Flush pending save on unmount / fiche switch.
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current) }, [key])
+  // Flush pending save on unmount / fiche switch (don't lose the last keystrokes).
+  useEffect(() => () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current)
+      if (latest.current) void saveFiche(latest.current)
+    }
+  }, [key, saveFiche])
 
   if (!fiche || !draft) {
     return <div className="flex-1 flex items-center justify-center text-muted-foreground">Sélectionnez une fiche</div>
