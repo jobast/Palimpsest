@@ -26,7 +26,7 @@ export function sheetToFiche(sheet: Sheet): Fiche {
 
   if (sheet.type === 'character') {
     const s = sheet as CharacterSheet
-    const f: Fiche = { slug: baseSlug, category: 'personnages', title: s.name, created, body: s.description ?? '' }
+    const f: Fiche = { slug: baseSlug, category: 'personnages', title: s.name || baseSlug, created, body: s.description ?? '' }
     if (lastUpdated) f.lastUpdated = lastUpdated
     const m = meta({ role: s.role, physicalDescription: s.physicalDescription, backstory: s.backstory, goals: s.goals, flaws: s.flaws, relationships: s.relationships, notes: s.notes, imageUrl: s.imageUrl })
     if (m) f.meta = m
@@ -34,7 +34,7 @@ export function sheetToFiche(sheet: Sheet): Fiche {
   }
   if (sheet.type === 'location') {
     const s = sheet as LocationSheet
-    const f: Fiche = { slug: baseSlug, category: 'lieux', title: s.name, created, body: s.description ?? '' }
+    const f: Fiche = { slug: baseSlug, category: 'lieux', title: s.name || baseSlug, created, body: s.description ?? '' }
     if (lastUpdated) f.lastUpdated = lastUpdated
     const m = meta({ coordinates: s.coordinates, mapZoom: s.mapZoom, significance: s.significance, sensoryDetails: s.sensoryDetails, notes: s.notes, imageUrl: s.imageUrl })
     if (m) f.meta = m
@@ -42,7 +42,7 @@ export function sheetToFiche(sheet: Sheet): Fiche {
   }
   if (sheet.type === 'plot') {
     const s = sheet as PlotSheet
-    const f: Fiche = { slug: baseSlug, category: 'intrigues', title: s.name, created, body: s.description ?? '' }
+    const f: Fiche = { slug: baseSlug, category: 'intrigues', title: s.name || baseSlug, created, body: s.description ?? '' }
     if (lastUpdated) f.lastUpdated = lastUpdated
     const m = meta({ plotType: s.plotType, acts: s.acts, keyEvents: s.keyEvents, notes: s.notes })
     if (m) f.meta = m
@@ -50,7 +50,7 @@ export function sheetToFiche(sheet: Sheet): Fiche {
   }
   // note
   const s = sheet as NoteSheet
-  const f: Fiche = { slug: baseSlug, category: 'notes', title: s.name, created, body: s.content ?? '' }
+  const f: Fiche = { slug: baseSlug, category: 'notes', title: s.name || baseSlug, created, body: s.content ?? '' }
   if (lastUpdated) f.lastUpdated = lastUpdated
   const m = meta({ tags: s.tags })
   if (m) f.meta = m
