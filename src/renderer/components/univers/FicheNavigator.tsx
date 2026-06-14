@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useWikiStore } from '@/stores/wikiStore'
+import { useProjectStore } from '@/stores/projectStore'
+import { useStatsStore } from '@/stores/statsStore'
 import { groupFichesByCategory, ficheKey, WIKI_CATEGORIES, type WikiCategory } from '@shared/wiki'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Sparkles, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { writeAgentDoc } from '@/lib/wiki/wikiIO'
 
 const CATEGORY_LABELS: Record<WikiCategory, string> = {
   personnages: 'Personnages', lieux: 'Lieux', intrigues: 'Intrigues',
@@ -11,9 +14,22 @@ const CATEGORY_LABELS: Record<WikiCategory, string> = {
 
 export function FicheNavigator() {
   const { fiches, activeFicheKey, setActiveFiche, createFiche, deleteFiche } = useWikiStore()
+  const project = useProjectStore(s => s.project)
+  const projectPath = useProjectStore(s => s.projectPath)
+  const showNotification = useStatsStore(s => s.showNotification)
   const [adding, setAdding] = useState<WikiCategory | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const groups = groupFichesByCategory(fiches)
+
+  const handlePrepareAgent = async () => {
+    if (!project || !projectPath) return
+    try {
+      const path = await writeAgentDoc(projectPath, project.meta.name, project.meta.author || '')
+      showNotification('success', `Analyse préparée : ${path}. Lancez « claude » dans ce dossier.`)
+    } catch {
+      showNotification('error', "Impossible de préparer l'analyse")
+    }
+  }
 
   const submitNew = (category: WikiCategory) => {
     const title = newTitle.trim()
@@ -69,6 +85,14 @@ export function FicheNavigator() {
           </div>
         )
       })}
+      <button
+        onClick={handlePrepareAgent}
+        className="mt-3 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+        title="Génère wiki/CLAUDE.md pour une analyse approfondie par un agent externe"
+      >
+        <Sparkles size={13} />
+        Préparer l'analyse approfondie
+      </button>
     </div>
   )
 }
