@@ -2,7 +2,8 @@ import {
   parseFiche, serializeFiche, type Fiche, type WikiCategory, WIKI_CATEGORIES,
   parseSuggestion, serializeSuggestion, type Suggestion,
   parseAlert, serializeAlert, type Alert,
-  formatLogEntry, prependLogEntry
+  formatLogEntry, prependLogEntry,
+  buildWikiAgentDoc
 } from '@shared/wiki'
 import { slugify } from '@shared/markdown/filename'
 
@@ -120,6 +121,20 @@ export async function markChapterIntegrated(projectPath: string, chapterId: stri
   const integrations = await loadIntegrations(projectPath)
   integrations[chapterId] = new Date().toISOString()
   await window.electronAPI.writeFile(`${projectPath}/wiki/integrations.json`, JSON.stringify(integrations, null, 2))
+}
+
+/**
+ * Prepare the wiki for an external agent (Claude Code): create the category folders
+ * and write wiki/CLAUDE.md (the operating manual). Returns the doc's path.
+ */
+export async function writeAgentDoc(projectPath: string, projectName: string, author: string): Promise<string> {
+  await ensureDir(`${projectPath}/wiki`)
+  for (const category of WIKI_CATEGORIES) {
+    await ensureDir(`${projectPath}/wiki/${category}`)
+  }
+  const path = `${projectPath}/wiki/CLAUDE.md`
+  await window.electronAPI.writeFile(path, buildWikiAgentDoc(projectName, author))
+  return path
 }
 
 /**
