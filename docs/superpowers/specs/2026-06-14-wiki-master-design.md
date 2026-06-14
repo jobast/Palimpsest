@@ -150,6 +150,29 @@ cf. spec W1 mis à jour). Le **W0 (réconciliation sheets)** devient une **migra
 préservant les champs**, à placer une fois W1+éditeur prêts. Nouveau sous-projet **W-FE
 (éditeur de fiche : IA+manuel+query)** = à brainstormer le moment venu.
 
+## Alignement avec le pattern « LLM Wiki » (réf. partagée par l'utilisateur, 2026-06-14)
+
+Le pattern générique « LLM Wiki » (3 couches : sources brutes immuables / wiki détenu par
+l'IA / schéma de conventions ; opérations Ingest / Query / **Lint** ; fichiers `index.md`
++ `log.md`) **valide notre architecture**. Correspondances : sources brutes = chapitres ;
+wiki = fiches markdown ; schéma = nos prompts (charte + grille) ; Ingest = suggestions à
+accepter ; Query = ask_bible (réponse filable en fiche `notes`) ; contradictions = alertes ;
+`log.md` déjà prévu. **Ajouts à intégrer** issus du pattern :
+
+- **`index.md`** (catalogue de contenu) : liste de toutes les fiches par catégorie (titre +
+  résumé une ligne + lien), maintenue à chaque ingest. Sert la navigation et la sélection de
+  contexte d'ask_bible. → fonction `writeWikiIndex(fiches)` ajoutée à la couche store (W1b).
+- **Opération Lint** (bilan de santé) : contradictions entre fiches, claims périmés, fiches
+  **orphelines** (sans backlink), concepts cités sans fiche, cross-refs manquants, lacunes.
+  → nouveau sous-projet **W-Lint** (s'appuie sur W2 liens + W3 IA).
+- **Doc-schéma optionnel `wiki/CLAUDE.md`** : comme le wiki est du markdown pur, y déposer les
+  conventions (catégories, frontmatter `sources:`, « ne jamais supprimer une contradiction »,
+  pas de tirets cadratins, grille de lecture) permet à un **agent externe** (Claude Code) de
+  maintenir la bible hors de l'app. → optionnel, généré une fois (sous-projet W-Lint ou W3).
+- Log « grep-friendly » : préfixe d'entrée régulier (notre `## <date> - <ACTION> <sujet>` est
+  déjà parseable). OK tel quel.
+
 ## Prochaine étape
-Décisions arbitrées ci-dessus. Suite : W1 (cœur stockage) → plan → implémentation, en
-intégrant les champs structurés. L'éditeur de fiche (W-FE) sera brainstormé à son tour.
+Décisions arbitrées ci-dessus. Suite : W1 ✅ ; en cours **W1b (store, + `index.md`) + W2
+(liens/recherche)** (autonome). L'éditeur de fiche (W-FE) et le Lint (W-Lint) seront
+brainstormés/planifiés à leur tour.
