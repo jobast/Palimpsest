@@ -696,6 +696,39 @@ ipcMain.handle('export:savePDF', async (_, data: Buffer, defaultFilename: string
   }
 })
 
+// Vector PDF of the whole book: render print HTML in a hidden window, printToPDF.
+ipcMain.handle('export:printBookPdf', async (_, payload: {
+  html: string
+  displayHeaderFooter: boolean
+  headerTemplate: string
+  footerTemplate: string
+}) => {
+  let win: BrowserWindow | null = null
+  let tmpFile: string | null = null
+  try {
+    tmpFile = path.join(app.getPath('temp'), `palimpseste-print-${Date.now()}.html`)
+    await fs.promises.writeFile(tmpFile, payload.html, 'utf-8')
+    win = new BrowserWindow({
+      show: false,
+      webPreferences: { javascript: false, sandbox: true }
+    })
+    await win.loadFile(tmpFile)
+    const pdfData = await win.webContents.printToPDF({
+      preferCSSPageSize: true,
+      printBackground: true,
+      displayHeaderFooter: payload.displayHeaderFooter,
+      headerTemplate: payload.headerTemplate || '<span></span>',
+      footerTemplate: payload.footerTemplate || '<span></span>'
+    })
+    return { success: true, data: pdfData }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  } finally {
+    if (win && !win.isDestroyed()) win.close()
+    if (tmpFile) await fs.promises.unlink(tmpFile).catch(() => undefined)
+  }
+})
+
 // AI key management
 ipcMain.handle('ai:getKeyStatus', async () => {
   const stored = await readStoredAIKeys()

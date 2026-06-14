@@ -85,6 +85,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   savePDF: (data: Buffer, defaultFilename: string) =>
     ipcRenderer.invoke('export:savePDF', data, defaultFilename),
 
+  printBookPdf: (payload: {
+    html: string
+    displayHeaderFooter: boolean
+    headerTemplate: string
+    footerTemplate: string
+  }) => ipcRenderer.invoke('export:printBookPdf', payload),
+
   // AI key management + chat
   aiGetKeyStatus: () => ipcRenderer.invoke('ai:getKeyStatus'),
   aiSetApiKey: (provider: 'claude' | 'openai', key: string) =>

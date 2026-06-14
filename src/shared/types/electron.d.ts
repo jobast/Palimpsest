@@ -53,6 +53,12 @@ export interface SavePDFResult {
   error?: string
 }
 
+export interface PrintBookPdfResult {
+  success: boolean
+  data?: Uint8Array
+  error?: string
+}
+
 export interface SaveJournalOperationResult {
   success: boolean
   error?: string
@@ -107,6 +113,12 @@ export interface ElectronAPI {
   // PDF Export
   printToPDF: (options: PrintToPDFOptions) => Promise<PrintToPDFResult>
   savePDF: (data: Buffer, defaultFilename: string) => Promise<SavePDFResult>
+  printBookPdf: (payload: {
+    html: string
+    displayHeaderFooter: boolean
+    headerTemplate: string
+    footerTemplate: string
+  }) => Promise<PrintBookPdfResult>
   // AI
   aiGetKeyStatus: () => Promise<AIKeyStatus>
   aiSetApiKey: (provider: 'claude' | 'openai', key: string) => Promise<{ success: boolean }>
