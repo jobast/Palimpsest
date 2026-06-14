@@ -37,11 +37,23 @@ export interface Fiche {
   category: WikiCategory
   title: string
   created: string          // YYYY-MM-DD
-  body: string
+  body: string             // Markdown body (AI-maintained + author-editable)
   lastUpdated?: string     // YYYY-MM-DD
   sources?: string[]       // chapter ids/files ingested into this fiche
   type?: string            // template subtype (mystere, chronologie, pov, …)
+  // "Best of both worlds": structured fields preserved in frontmatter so the
+  // specialized editors keep working (lieux: coordinates/mapZoom; persos:
+  // role/relationships/physicalDescription; …). Unknown frontmatter keys are
+  // round-tripped here so nothing is ever lost. Migration of sheets/*.json maps
+  // their fields into `meta`.
+  meta?: Record<string, unknown>
 }
+```
+**Round-trip rule:** `parseFiche` puts known keys (titre/categorie/cree/last_updated/sources/
+type) on their fields and **every other frontmatter key into `meta`** ; `serializeFiche`
+re-emits the known keys + spreads `meta` back into the frontmatter. Thus structured fields
+(coordinates, role, relationships, …) survive AI ingest and manual edits untouched.
+```typescript
 
 export type SuggestionType = 'nouvelle_fiche' | 'ajout' | 'incoherence'
 export interface Suggestion {

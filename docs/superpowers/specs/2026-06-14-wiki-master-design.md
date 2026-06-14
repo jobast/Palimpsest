@@ -121,6 +121,35 @@ Ordre conseillé : **W1 → W2 → (W6 démarre) → W3 → W4 → W5**, avec W0
 - §A (IA multi-provider) — son propre cycle.
 - Recto-verso EPUB/PDF, etc.
 
+## ✅ DÉCISIONS ARBITRÉES (2026-06-14, par l'utilisateur) — supersèdent les questions ci-dessus
+
+1. **Fiche unifiée « meilleur des deux mondes »** : une seule entité fiche = **corps Markdown**
+   (maintenu par l'IA, avec `sources:` + wikilinks) **+ champs structurés en frontmatter**
+   (lieux : `coordinates`/`mapZoom` ; persos : `role`/`relationships`/`physicalDescription`/… ;
+   etc.) **+ éditeurs spécialisés conservés** (onglet carte pour un lieu, onglets identité/
+   psycho pour un perso). **Édition mixte** : l'IA gère le contenu qu'elle peut, MAIS l'auteur
+   peut éditer/ajouter à la main ET **interroger l'IA depuis la fiche** (double-check, combler
+   un manque, intégrer de nouveaux éléments). → Migration ponctuelle des `sheets/*.json` →
+   fiches wiki en **préservant tous les champs** (dans le frontmatter).
+   ⚠️ **L'interaction d'édition de fiche (IA + manuel + query-depuis-la-fiche) fera l'objet de
+   son PROPRE brainstorming/planning** (sous-projet **W-FE : éditeur de fiche**), distinct de
+   la fondation. Ne pas la concevoir en détail ici.
+
+2. **IA du wiki = la couche IA des settings de l'app** : le wiki se *plugge* sur l'existant
+   (`aiStore` + IPC `ai:chat`, Claude/OpenAI/Ollama, clés chiffrées). Pas de nouvelle couche IA,
+   pas de prérequis §A. Quand des fournisseurs seront ajoutés (§A), le wiki en bénéficie
+   automatiquement (même settings).
+
+3. **Charte stricte** : oui, sur tout prompt wiki (ingest + ask_bible + query-depuis-fiche).
+
+4. **Ingest in-app** : oui (un chapitre à la fois + « tout intégrer »).
+
+**Impact sur le découpage** : W1 (cœur stockage) reste la fondation et est débloqué — ajuster
+seulement le modèle `Fiche` pour porter les **champs structurés** (frontmatter ouvert/typé,
+cf. spec W1 mis à jour). Le **W0 (réconciliation sheets)** devient une **migration sheets→fiches
+préservant les champs**, à placer une fois W1+éditeur prêts. Nouveau sous-projet **W-FE
+(éditeur de fiche : IA+manuel+query)** = à brainstormer le moment venu.
+
 ## Prochaine étape
-À ton réveil : trancher les **Décisions à valider** (surtout §1 sheets et §2 providers).
-Ensuite : relire `2026-06-14-wiki-1-storage-core-design.md` → plan W1 → implémentation.
+Décisions arbitrées ci-dessus. Suite : W1 (cœur stockage) → plan → implémentation, en
+intégrant les champs structurés. L'éditeur de fiche (W-FE) sera brainstormé à son tour.
