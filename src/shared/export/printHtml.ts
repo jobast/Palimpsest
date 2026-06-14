@@ -54,11 +54,19 @@ export function docToPrintHtml(doc: TipTapDoc): string {
 /** Assemble a standalone print HTML document from chapter fragments + template CSS. */
 export function buildBookHtml(chapterHtmls: string[], template: PageTemplate, project: Project): string {
   const { page, typography } = template
+  // Digital/reflowable templates (width '100%', height 'auto') aren't valid for a
+  // fixed @page size — fall back to A4 so the PDF is well-formed.
+  const isFixedSize = !/%/.test(page.width) && !/auto/i.test(page.height)
+  const pageWidth = isFixedSize ? page.width : '210mm'
+  const pageHeight = isFixedSize ? page.height : '297mm'
+  const margins = isFixedSize
+    ? `${page.marginTop} ${page.marginRight} ${page.marginBottom} ${page.marginLeft}`
+    : '20mm'
   const css = `
-    @page { size: ${page.width} ${page.height}; margin: ${page.marginTop} ${page.marginRight} ${page.marginBottom} ${page.marginLeft}; }
+    @page { size: ${pageWidth} ${pageHeight}; margin: ${margins}; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${typography.fontFamily}; font-size: ${typography.fontSize}; line-height: ${typography.lineHeight}; color: #000; }
-    p { margin: 0; text-align: justify; text-indent: ${typography.firstLineIndent}; }
+    p { margin: 0; text-align: justify; text-indent: ${typography.firstLineIndent}; orphans: 2; widows: 2; }
     p.first-paragraph { text-indent: 0; }
     p.scene-break { text-align: center; text-indent: 0; margin: 1em 0; }
     h1.chapter-title { text-align: center; font-weight: bold; text-indent: 0; margin: 0 0 2em; break-after: avoid; }
