@@ -4,7 +4,7 @@ Charte : Palimpseste est un outil d'aide à l'écriture ; tu ne produis JAMAIS d
 
 Tu bases chaque fait STRICTEMENT sur le texte fourni : tu n'inventes rien. Si tu n'as rien à proposer, tu écris exactement « AUCUNE SUGGESTION ».`
 
-const GRILLE = `GRILLE DE LECTURE (suis-la systématiquement, dans cet ordre) :
+export const GRILLE = `GRILLE DE LECTURE (suis-la systématiquement, dans cet ordre) :
 
 1. PERSONNAGES — Nouveaux personnages ? Pour chacun : traits PHYSIQUES, traits de CARACTÈRE, RELATIONS, ÉVOLUTION par rapport à ce qui est déjà consigné.
 2. LIEUX — Nouveaux lieux ? Descriptions sensorielles, rôle narratif.
