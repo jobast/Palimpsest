@@ -6,7 +6,6 @@ import { useStatsStore } from '@/stores/statsStore'
 import {
   Bold,
   Italic,
-  Underline,
   Strikethrough,
   AlignLeft,
   AlignCenter,
@@ -87,12 +86,6 @@ export function Toolbar() {
         onClick={() => editor.chain().focus().toggleItalic().run()}
         active={editor.isActive('italic')}
         title="Italique (⌘I)"
-      />
-      <ToolbarButton
-        icon={<Underline size={16} />}
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-        active={editor.isActive('underline')}
-        title="Souligné (⌘U)"
       />
       <ToolbarButton
         icon={<Strikethrough size={16} />}

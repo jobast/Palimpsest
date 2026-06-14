@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type {
   Project,
+  ProjectMeta,
+  ManuscriptStructure,
   ManuscriptItem,
   Sheet,
   UserTypographyOverrides,
@@ -11,6 +13,8 @@ import type {
   DailyStats,
   StatsData
 } from '@shared/types/project'
+import { parseChapter, serializeChapter, planChapterFiles, orphanFiles, type ChapterRef } from '@shared/markdown'
+import type { TipTapDoc } from '@shared/markdown'
 import { aggregateDailyStats } from '@/lib/stats/aggregations'
 import { calculateStreak } from '@/lib/stats/calculations'
 import { useEditorStore } from './editorStore'
@@ -100,8 +104,11 @@ interface ProjectState {
   isDirty: boolean
   lastDirtyAt: number
   activeDocumentId: string | null
+  chapterRefs: ChapterRef[]   // id↔file mapping from the manifest (kept stable on save)
+  chaptersWithNote: Set<string>   // chapter ids that have a .note.md sidecar
   activeSheetId: string | null  // Currently edited sheet (null = editing manuscript)
   activeReportId: string | null  // Currently viewed report
+  activeNoteId: string | null   // chapter id whose private note is open (center view)
   recentProjects: RecentProject[]
 
   // Actions
@@ -110,6 +117,7 @@ interface ProjectState {
   setActiveDocument: (id: string | null) => void
   setActiveSheet: (id: string | null) => void
   setActiveReport: (id: string | null) => void
+  setActiveNote: (id: string | null) => void
   setDirty: (dirty: boolean) => void
   addToRecentProjects: (project: RecentProject) => void
   loadRecentProjects: () => void
@@ -118,6 +126,7 @@ interface ProjectState {
   // Manuscript actions
   addManuscriptItem: (item: ManuscriptItem, parentId?: string) => void
   updateManuscriptItem: (id: string, updates: Partial<ManuscriptItem>) => void
+  renameChapter: (id: string, title: string) => void
   deleteManuscriptItem: (id: string) => void
   duplicateManuscriptItem: (id: string) => void
   reorderManuscriptItems: (items: ManuscriptItem[]) => void
@@ -135,6 +144,12 @@ interface ProjectState {
 
   // Typography overrides
   updateTypographyOverrides: (overrides: UserTypographyOverrides) => void
+
+  // Chapter note sidecar helpers (.note.md, never in manuscript, never exported)
+  getChapterNotePath: (id: string) => string | null
+  loadChapterNote: (id: string) => Promise<string>
+  saveChapterNote: (id: string, note: string) => Promise<void>
+  refreshChaptersWithNote: () => Promise<void>
 
   // File operations
   createNewProject: (name: string, author: string, template: string, path?: string) => Promise<void>
@@ -231,14 +246,14 @@ const safeJsonParse = <T>(content: string | undefined | null, fallback: T): T =>
 const ensureCreateDirectory = async (dirPath: string): Promise<void> => {
   const result = await window.electronAPI.createDirectory(dirPath)
   if (!result.success) {
-    throw new Error(`Impossible de creer le dossier: ${dirPath}`)
+    throw new Error(`Impossible de creer le dossier: ${dirPath}${result.error ? ` (${result.error})` : ''}`)
   }
 }
 
 const ensureWriteFile = async (filePath: string, content: string): Promise<void> => {
   const result = await window.electronAPI.writeFile(filePath, content)
   if (!result.success) {
-    throw new Error(`Impossible d'ecrire le fichier: ${filePath}`)
+    throw new Error(`Impossible d'ecrire le fichier: ${filePath}${result.error ? ` (${result.error})` : ''}`)
   }
 }
 
@@ -317,6 +332,42 @@ const loadSheetsFromDisk = async (projectPath: string): Promise<Project['sheets'
   return sheets
 }
 
+interface LoadedManuscript {
+  items: ManuscriptItem[]
+  documentContents: Record<string, string>  // chapterId → TipTap doc JSON string
+  chapterRefs: ChapterRef[]                  // for stable filenames on save
+}
+
+// Read the manifest's chapter list + each chapitres/*.md into the in-memory model.
+const loadManuscriptFromDisk = async (
+  projectPath: string,
+  chapterRefs: ChapterRef[]
+): Promise<LoadedManuscript> => {
+  const items: ManuscriptItem[] = []
+  const documentContents: Record<string, string> = {}
+
+  for (const ref of chapterRefs) {
+    const fileResult = await window.electronAPI.readFile(`${projectPath}/${ref.file}`)
+    if (!fileResult.success || !fileResult.content) continue
+    const fallbackTitle = ref.file.replace(/^chapitres\//, '').replace(/\.md$/, '')
+    const { frontmatter, doc } = parseChapter(fileResult.content, fallbackTitle)
+    const id = frontmatter.id || ref.id
+    items.push({
+      id,
+      type: 'chapter',
+      title: frontmatter.title,
+      status: frontmatter.status ?? 'draft',
+      synopsis: frontmatter.synopsis,
+      pov: frontmatter.pov,
+      wordCount: 0,            // recomputed by the editor/stats, never persisted
+      children: []
+    })
+    documentContents[id] = JSON.stringify(doc)
+  }
+
+  return { items, documentContents, chapterRefs }
+}
+
 // Save recent projects to localStorage
 const saveRecentProjectsToStorage = (projects: RecentProject[]) => {
   localStorage.setItem('palimpseste_recentProjects', JSON.stringify(projects))
@@ -330,12 +381,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isDirty: false,
   lastDirtyAt: 0,
   activeDocumentId: null,
+  chapterRefs: [],
+  chaptersWithNote: new Set<string>(),
   activeSheetId: null,
   activeReportId: null,
+  activeNoteId: null,
   recentProjects: loadRecentProjectsFromStorage(),
 
   setProject: (project, path) => {
-    set({ project, projectPath: path, isDirty: false, lastDirtyAt: 0, activeSheetId: null, activeReportId: null })
+    set({ project, projectPath: path, isDirty: false, lastDirtyAt: 0, activeSheetId: null, activeReportId: null, activeNoteId: null, chaptersWithNote: new Set() })
     localStorage.setItem('lastProjectPath', path)
   },
 
@@ -350,12 +404,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setActiveDocument: (id) => set({
     activeDocumentId: id && isValidDocumentId(id) ? id : null,
-    activeSheetId: null
+    activeSheetId: null,
+    activeReportId: null,
+    activeNoteId: null
   }),
 
-  setActiveSheet: (id) => set({ activeSheetId: id, activeReportId: null }),
+  setActiveSheet: (id) => set({ activeSheetId: id, activeReportId: null, activeNoteId: null }),
 
-  setActiveReport: (id) => set({ activeReportId: id, activeSheetId: null }),
+  setActiveReport: (id) => set({ activeReportId: id, activeSheetId: null, activeNoteId: null }),
+
+  setActiveNote: (id) => set({
+    activeNoteId: id,
+    activeDocumentId: null,
+    activeSheetId: null,
+    activeReportId: null
+  }),
 
   setDirty: (dirty) => set((state) => ({
     isDirty: dirty,
@@ -405,57 +468,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       await recoverPendingSaveIfNeeded(projectPath)
 
       const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
-      const structureResult = await window.electronAPI.readFile(`${projectPath}/manuscript/structure.json`)
-
       if (!metaResult.success || !metaResult.content) {
         throw new Error('Impossible de lire project.json')
       }
-      if (!structureResult.success || !structureResult.content) {
-        throw new Error('Impossible de lire structure.json')
-      }
+      const manifest = JSON.parse(metaResult.content) as Record<string, unknown> & { chapters?: ChapterRef[] }
+      const { chapters: chapterRefsRaw, ...rest } = manifest
+      const chapterRefs: ChapterRef[] = Array.isArray(chapterRefsRaw) ? chapterRefsRaw : []
+      const meta = rest as unknown as ProjectMeta
 
-      const meta = JSON.parse(metaResult.content)
-      const manuscript = JSON.parse(structureResult.content)
       const stats = await loadStatsFromDisk(projectPath)
-
-      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(projectPath)
       const reports = await loadReportsFromDisk(projectPath)
 
-      const project: Project = {
-        meta,
-        manuscript,
-        sheets,
-        stats,
-        reports
-      }
+      const loaded = await loadManuscriptFromDisk(projectPath, chapterRefs)
+      const manuscript: ManuscriptStructure = { items: loaded.items }
 
-      // Sync stats store
+      const project: Project = { meta, manuscript, sheets, stats, reports }
+
       useStatsStore.getState().setProjectId(meta.id)
       useStatsStore.getState().loadStats(stats)
-
-      // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
 
-      // Load document contents from disk BEFORE setting activeDocumentId
       const editorStore = useEditorStore.getState()
       editorStore.clearDocumentContents()
-      const documentsDir = `${projectPath}/manuscript/documents`
-      const dirResult = await window.electronAPI.readDirectory(documentsDir)
-      if (dirResult.success && dirResult.files) {
-        const documentContents: Record<string, string> = {}
-        for (const file of dirResult.files) {
-          if (file.name.endsWith('.json') && !file.isDirectory) {
-            const documentId = file.name.replace('.json', '')
-            if (!isValidDocumentId(documentId)) continue
-            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
-            if (contentResult.success && contentResult.content) {
-              documentContents[documentId] = contentResult.content
-            }
-          }
-        }
-        editorStore.loadDocumentContents(documentContents)
-      }
+      editorStore.loadDocumentContents(loaded.documentContents)
 
       // Now set state with activeDocumentId (after documents are loaded)
       set({
@@ -464,8 +500,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
+        chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
+      void get().refreshChaptersWithNote()
 
       // Update recent projects
       get().addToRecentProjects({
@@ -484,7 +522,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   addManuscriptItem: (item, parentId) => {
-    const { project } = get()
+    const { project, chapterRefs } = get()
     if (!project) return
 
     const addToItems = (items: ManuscriptItem[]): ManuscriptItem[] => {
@@ -502,13 +540,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       })
     }
 
+    const newItems = addToItems(project.manuscript.items)
     set({
       project: {
         ...project,
         manuscript: {
-          items: addToItems(project.manuscript.items)
+          items: newItems
         }
       },
+      // Keep chapterRefs in sync so a new chapter has a stable file ref at once;
+      // note paths derive from it (otherwise saveChapterNote silently no-ops).
+      chapterRefs: planChapterFiles(newItems.map(i => ({ id: i.id, title: i.title })), chapterRefs),
       isDirty: true, lastDirtyAt: Date.now()
     })
   },
@@ -540,6 +582,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
+  // Single setter for a chapter title (the source of truth).
+  // The TDM and the on-page chapter-title block both go through here.
+  renameChapter: (id, title) => {
+    get().updateManuscriptItem(id, { title })
+  },
+
   deleteManuscriptItem: (id) => {
     const { project } = get()
     if (!project) return
@@ -567,7 +615,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   duplicateManuscriptItem: (id) => {
-    const { project } = get()
+    const { project, chapterRefs } = get()
     if (!project) return
 
     // Deep clone function for manuscript items
@@ -596,13 +644,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return result
     }
 
+    const newItems = duplicateInItems(project.manuscript.items)
     set({
       project: {
         ...project,
         manuscript: {
-          items: duplicateInItems(project.manuscript.items)
+          items: newItems
         }
       },
+      // Assign a stable file ref to the duplicated chapter immediately.
+      chapterRefs: planChapterFiles(newItems.map(i => ({ id: i.id, title: i.title })), chapterRefs),
       isDirty: true, lastDirtyAt: Date.now()
     })
   },
@@ -760,6 +811,48 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })
   },
 
+  getChapterNotePath: (id) => {
+    const { projectPath, chapterRefs } = get()
+    const ref = chapterRefs.find(r => r.id === id)
+    if (!projectPath || !ref) return null
+    return `${projectPath}/${ref.file.replace(/\.md$/, '.note.md')}`
+  },
+
+  loadChapterNote: async (id) => {
+    const path = get().getChapterNotePath(id)
+    if (!path) return ''
+    const result = await window.electronAPI.readFile(path)
+    return result.success && result.content ? result.content : ''
+  },
+
+  saveChapterNote: async (id, note) => {
+    const path = get().getChapterNotePath(id)
+    if (!path) return
+    const next = new Set(get().chaptersWithNote)
+    if (note.trim() === '') {
+      await window.electronAPI.deleteFile(path)
+      next.delete(id)
+    } else {
+      await window.electronAPI.writeFile(path, note)
+      next.add(id)
+    }
+    set({ chaptersWithNote: next })
+  },
+
+  // Probe each chapter's sidecar to know which notes exist (for the TDM item).
+  refreshChaptersWithNote: async () => {
+    const { projectPath, chapterRefs } = get()
+    if (!projectPath) { set({ chaptersWithNote: new Set() }); return }
+    const entries = await Promise.all(
+      chapterRefs.map(async (ref) => {
+        const notePath = `${projectPath}/${ref.file.replace(/\.md$/, '.note.md')}`
+        const exists = await window.electronAPI.exists(notePath)
+        return exists ? ref.id : null
+      })
+    )
+    set({ chaptersWithNote: new Set(entries.filter((id): id is string => id !== null)) })
+  },
+
   createNewProject: async (name, author, template, providedPath?) => {
     set({ isLoading: true })
     try {
@@ -808,25 +901,40 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       // Create project directory structure
       await ensureCreateDirectory(projectPath)
-      await ensureCreateDirectory(`${projectPath}/manuscript/documents`)
-      await ensureCreateDirectory(`${projectPath}/sheets/characters`)
-      await ensureCreateDirectory(`${projectPath}/sheets/locations`)
-      await ensureCreateDirectory(`${projectPath}/sheets/plots`)
-      await ensureCreateDirectory(`${projectPath}/sheets/custom`)
+      await ensureCreateDirectory(`${projectPath}/chapitres`)
+      await ensureCreateDirectory(`${projectPath}/sheets`)
       await ensureCreateDirectory(`${projectPath}/stats`)
       await ensureCreateDirectory(`${projectPath}/reports`)
       await ensureCreateDirectory(`${projectPath}/snapshots`)
       await ensureCreateDirectory(`${projectPath}/trash`)
 
-      // Write project files
+      // Initial chapter → one .md + manifest entry
+      const initialRefs = planChapterFiles(
+        project.manuscript.items.map(i => ({ id: i.id, title: i.title })),
+        []
+      )
+      for (const ref of initialRefs) {
+        const item = project.manuscript.items.find(i => i.id === ref.id)!
+        const md = serializeChapter({
+          frontmatter: { id: item.id, title: item.title, status: item.status },
+          doc: {
+            type: 'doc',
+            content: [
+              { type: 'chapterTitle', content: [{ type: 'text', text: item.title }] },
+              { type: 'firstParagraph', content: [] }
+            ]
+          }
+        })
+        await ensureWriteFile(`${projectPath}/${ref.file}`, md)
+      }
+
+      // Write project manifest (meta + chapter refs)
       await ensureWriteFile(
         `${projectPath}/project.json`,
-        JSON.stringify(project.meta, null, 2)
+        JSON.stringify({ ...project.meta, chapters: initialRefs }, null, 2)
       )
-      await ensureWriteFile(
-        `${projectPath}/manuscript/structure.json`,
-        JSON.stringify(project.manuscript, null, 2)
-      )
+
+      // Write project files
       await ensureWriteFile(
         `${projectPath}/stats/sessions.json`,
         JSON.stringify(project.stats.sessions, null, 2)
@@ -852,6 +960,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({
         project,
         projectPath,
+        chapterRefs: initialRefs,
+        chaptersWithNote: new Set(),
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
@@ -859,8 +969,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       })
       localStorage.setItem('lastProjectPath', projectPath)
 
-      // Clear any old document contents
+      // Clear any old document contents then pre-load initial chapter content
       useEditorStore.getState().clearDocumentContents()
+      const initialContents: Record<string, string> = {}
+      for (const ref of initialRefs) {
+        const item = project.manuscript.items.find(i => i.id === ref.id)!
+        initialContents[item.id] = JSON.stringify({
+          type: 'doc',
+          content: [
+            { type: 'chapterTitle', content: [{ type: 'text', text: item.title }] },
+            { type: 'firstParagraph', content: [] }
+          ]
+        })
+      }
+      useEditorStore.getState().loadDocumentContents(initialContents)
 
       // Add to recent projects
       get().addToRecentProjects({
@@ -922,57 +1044,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       // Read project files
       const metaResult = await window.electronAPI.readFile(`${projectPath}/project.json`)
-      const structureResult = await window.electronAPI.readFile(`${projectPath}/manuscript/structure.json`)
-
       if (!metaResult.success || !metaResult.content) {
         throw new Error('Impossible de lire project.json')
       }
-      if (!structureResult.success || !structureResult.content) {
-        throw new Error('Impossible de lire structure.json')
-      }
+      const manifest = JSON.parse(metaResult.content) as Record<string, unknown> & { chapters?: ChapterRef[] }
+      const { chapters: chapterRefsRaw, ...rest } = manifest
+      const chapterRefs: ChapterRef[] = Array.isArray(chapterRefsRaw) ? chapterRefsRaw : []
+      const meta = rest as unknown as ProjectMeta
 
-      const meta = JSON.parse(metaResult.content)
-      const manuscript = JSON.parse(structureResult.content)
       const stats = await loadStatsFromDisk(projectPath)
-
-      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(projectPath)
       const reports = await loadReportsFromDisk(projectPath)
 
-      const project: Project = {
-        meta,
-        manuscript,
-        sheets,
-        stats,
-        reports
-      }
+      const loaded = await loadManuscriptFromDisk(projectPath, chapterRefs)
+      const manuscript: ManuscriptStructure = { items: loaded.items }
 
-      // Sync stats store
+      const project: Project = { meta, manuscript, sheets, stats, reports }
+
       useStatsStore.getState().setProjectId(meta.id)
       useStatsStore.getState().loadStats(stats)
-
-      // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
 
-      // Load document contents from disk BEFORE setting activeDocumentId
       const editorStore = useEditorStore.getState()
       editorStore.clearDocumentContents()
-      const documentsDir = `${projectPath}/manuscript/documents`
-      const dirResult = await window.electronAPI.readDirectory(documentsDir)
-      if (dirResult.success && dirResult.files) {
-        const documentContents: Record<string, string> = {}
-        for (const file of dirResult.files) {
-          if (file.name.endsWith('.json') && !file.isDirectory) {
-            const documentId = file.name.replace('.json', '')
-            if (!isValidDocumentId(documentId)) continue
-            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
-            if (contentResult.success && contentResult.content) {
-              documentContents[documentId] = contentResult.content
-            }
-          }
-        }
-        editorStore.loadDocumentContents(documentContents)
-      }
+      editorStore.loadDocumentContents(loaded.documentContents)
 
       // Now set state with activeDocumentId (after documents are loaded)
       set({
@@ -981,8 +1076,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
+        chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
+      void get().refreshChaptersWithNote()
       localStorage.setItem('lastProjectPath', projectPath)
 
       // Add to recent projects
@@ -1026,6 +1123,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isSaving: true })
     try {
       // Browser mode: save to localStorage
+      // Browser mode keeps the in-memory TipTap JSON (no .md files on disk).
       if (!hasElectronAPI() || projectPath.startsWith('browser://')) {
         const projectId = project.meta.id
         const updatedProject = {
@@ -1062,14 +1160,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         stats
       }
       await ensureWriteFile(
-        `${projectPath}/project.json`,
-        JSON.stringify(updatedMeta, null, 2)
-      )
-      await ensureWriteFile(
-        `${projectPath}/manuscript/structure.json`,
-        JSON.stringify(project.manuscript, null, 2)
-      )
-      await ensureWriteFile(
         `${projectPath}/stats/sessions.json`,
         JSON.stringify(stats.sessions, null, 2)
       )
@@ -1087,19 +1177,45 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }, null, 2)
       )
 
-      // Save document contents
-      const documentContents = useEditorStore.getState().getAllDocumentContents()
-      for (const documentId of documentContents.keys()) {
-        if (!isValidDocumentId(documentId)) {
-          throw new Error(`ID de document invalide: ${documentId}`)
-        }
+      // --- Manuscript: one .md per chapter + manifest order ---
+      const items = project.manuscript.items
+      const newRefs = planChapterFiles(
+        items.map(i => ({ id: i.id, title: i.title })),
+        get().chapterRefs
+      )
+      const refById = new Map(newRefs.map(r => [r.id, r.file]))
+      const docContents = useEditorStore.getState().getAllDocumentContents()
+
+      for (const item of items) {
+        const file = refById.get(item.id)
+        if (!file) continue
+        const json = docContents.get(item.id)
+        const doc: TipTapDoc = json
+          ? (JSON.parse(json) as TipTapDoc)
+          : { type: 'doc', content: [{ type: 'chapterTitle', content: [{ type: 'text', text: item.title }] }] }
+        const md = serializeChapter({
+          frontmatter: {
+            id: item.id,
+            title: item.title,
+            status: item.status,
+            synopsis: item.synopsis,
+            pov: item.pov
+          },
+          doc
+        })
+        await ensureWriteFile(`${projectPath}/${file}`, md)
       }
-      for (const [documentId, content] of documentContents) {
-        await ensureWriteFile(
-          `${projectPath}/manuscript/documents/${documentId}.json`,
-          content
-        )
+
+      // Delete .md files for removed chapters (journal-aware).
+      for (const orphan of orphanFiles(get().chapterRefs, newRefs)) {
+        await window.electronAPI.deleteFile(`${projectPath}/${orphan}`)
       }
+
+      // Manifest = meta + ordered chapter refs.
+      await ensureWriteFile(
+        `${projectPath}/project.json`,
+        JSON.stringify({ ...updatedMeta, chapters: newRefs }, null, 2)
+      )
 
       // Save sheets
       await ensureWriteFile(
@@ -1130,6 +1246,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
       set((state) => ({
         project: updatedProject,
+        chapterRefs: newRefs,
         isSaving: false,
         isDirty: state.lastDirtyAt > saveStartedAt
       }))
@@ -1204,55 +1321,31 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoading: true })
     try {
       const metaResult = await window.electronAPI.readFile(`${lastPath}/project.json`)
-      const structureResult = await window.electronAPI.readFile(`${lastPath}/manuscript/structure.json`)
-
-      if (!metaResult.success || !structureResult.success) {
+      if (!metaResult.success || !metaResult.content) {
         set({ isLoading: false })
         return
       }
+      const manifest = JSON.parse(metaResult.content) as Record<string, unknown> & { chapters?: ChapterRef[] }
+      const { chapters: chapterRefsRaw, ...rest } = manifest
+      const chapterRefs: ChapterRef[] = Array.isArray(chapterRefsRaw) ? chapterRefsRaw : []
+      const meta = rest as unknown as ProjectMeta
 
-      const meta = JSON.parse(metaResult.content!)
-      const manuscript = JSON.parse(structureResult.content!)
       const stats = await loadStatsFromDisk(lastPath)
-
-      // Load sheets and reports from disk
       const sheets = await loadSheetsFromDisk(lastPath)
       const reports = await loadReportsFromDisk(lastPath)
 
-      const project: Project = {
-        meta,
-        manuscript,
-        sheets,
-        stats,
-        reports
-      }
+      const loaded = await loadManuscriptFromDisk(lastPath, chapterRefs)
+      const manuscript: ManuscriptStructure = { items: loaded.items }
 
-      // Sync stats store
+      const project: Project = { meta, manuscript, sheets, stats, reports }
+
       useStatsStore.getState().setProjectId(meta.id)
       useStatsStore.getState().loadStats(stats)
-
-      // Load typography overrides into editor store
       useEditorStore.getState().loadUserOverrides(meta.typographyOverrides || {})
 
-      // Load document contents from disk BEFORE setting activeDocumentId
       const editorStore = useEditorStore.getState()
       editorStore.clearDocumentContents()
-      const documentsDir = `${lastPath}/manuscript/documents`
-      const dirResult = await window.electronAPI.readDirectory(documentsDir)
-      if (dirResult.success && dirResult.files) {
-        const documentContents: Record<string, string> = {}
-        for (const file of dirResult.files) {
-          if (file.name.endsWith('.json') && !file.isDirectory) {
-            const documentId = file.name.replace('.json', '')
-            if (!isValidDocumentId(documentId)) continue
-            const contentResult = await window.electronAPI.readFile(`${documentsDir}/${file.name}`)
-            if (contentResult.success && contentResult.content) {
-              documentContents[documentId] = contentResult.content
-            }
-          }
-        }
-        editorStore.loadDocumentContents(documentContents)
-      }
+      editorStore.loadDocumentContents(loaded.documentContents)
 
       // Now set state with activeDocumentId (after documents are loaded)
       set({
@@ -1261,8 +1354,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         isLoading: false,
         isDirty: false,
         lastDirtyAt: 0,
+        chapterRefs: loaded.chapterRefs,
         activeDocumentId: findFirstValidDocumentId(manuscript.items)
       })
+      void get().refreshChaptersWithNote()
     } catch (error) {
       console.error('Failed to load last project:', error)
       set({ isLoading: false })

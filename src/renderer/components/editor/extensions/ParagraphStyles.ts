@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from '@tiptap/core'
+import { Node, mergeAttributes, canInsertNode } from '@tiptap/core'
 
 export interface SceneBreakOptions {
   HTMLAttributes: Record<string, unknown>
@@ -9,6 +9,9 @@ export const SceneBreak = Node.create<SceneBreakOptions>({
   name: 'sceneBreak',
 
   group: 'block',
+
+  // Leaf block: a single, indivisible unit (no editable content of its own).
+  atom: true,
 
   parseHTML() {
     return [
@@ -25,12 +28,24 @@ export const SceneBreak = Node.create<SceneBreakOptions>({
 
   addCommands() {
     return {
+      // Insert the break followed by an empty paragraph (the start of the next
+      // scene). TipTap places the cursor in that paragraph — we never build a
+      // manual selection, which avoids invalid-selection errors with this atom
+      // node. The break is never placed before/inside the chapter title.
       insertSceneBreak:
         () =>
-        ({ commands }) => {
-          return commands.insertContent({
-            type: this.name
-          })
+        ({ commands, state }) => {
+          if (!canInsertNode(state, state.schema.nodes[this.name])) {
+            return false
+          }
+          const { $from } = state.selection
+          const firstChild = state.doc.firstChild
+          const inTitle = firstChild?.type.name === 'chapterTitle' && $from.index(0) === 0
+          const content = [{ type: this.name }, { type: 'paragraph' }]
+          if (inTitle) {
+            return commands.insertContentAt(firstChild!.nodeSize, content)
+          }
+          return commands.insertContent(content)
         }
     }
   },

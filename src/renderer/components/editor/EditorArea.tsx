@@ -19,6 +19,7 @@ import { templateToPaginationOptions } from '@/lib/pagination/paginationPlusAdap
 import { PagedEditor } from './PagedEditor'
 import { SheetEditor } from './SheetEditor'
 import { ReportViewer } from './ReportViewer'
+import { NoteEditor } from './NoteEditor'
 import type { ManuscriptItem } from '@shared/types/project'
 
 // Helper to find a manuscript item by ID (recursive)
@@ -37,13 +38,15 @@ function findManuscriptItem(items: ManuscriptItem[], id: string): ManuscriptItem
  * Editor Area - Main container for the paginated editor
  */
 export function EditorArea() {
-  const { activeDocumentId, activeSheetId, activeReportId, project, setDirty } = useProjectStore()
+  const { activeDocumentId, activeSheetId, activeReportId, activeNoteId, project, setDirty } = useProjectStore()
   const {
     setEditor,
     getDocumentContent,
     setDocumentContent,
     startSession: startEditorSession,
-    updateWordCount
+    updateWordCount,
+    pendingSectionIndex,
+    clearPendingSectionScroll
   } = useEditorStore()
 
   const { recordActivity } = useStatsStore()
@@ -56,6 +59,7 @@ export function EditorArea() {
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeDocumentIdRef = useRef<string | null>(null)
   const previousDocumentIdRef = useRef<string | null>(null)
+  const programmaticTitleRef = useRef(false)
   activeDocumentIdRef.current = activeDocumentId
 
   // Get pagination options from current template
@@ -127,9 +131,19 @@ export function EditorArea() {
       }
       saveDebounceRef.current = setTimeout(() => {
         const docId = activeDocumentIdRef.current
-        if (docId) {
-          setDocumentContent(docId, JSON.stringify(editor.getJSON()))
-          setDirty(true) // Mark project as dirty for auto-save
+        if (!docId) return
+        setDocumentContent(docId, JSON.stringify(editor.getJSON()))
+        setDirty(true) // Mark project as dirty for auto-save
+        // On-page title → model (skip when we just wrote it programmatically)
+        if (!programmaticTitleRef.current) {
+          const first = editor.state.doc.firstChild
+          if (first && first.type.name === 'chapterTitle') {
+            const current = useProjectStore.getState().project
+            const item = current ? findManuscriptItem(current.manuscript.items, docId) : null
+            if (item && item.title !== first.textContent) {
+              useProjectStore.getState().renameChapter(docId, first.textContent)
+            }
+          }
         }
       }, 300) // 300ms debounce
     }
@@ -205,6 +219,33 @@ export function EditorArea() {
     startEditorSession(wordCount)
   }, [editor, activeDocumentId, getDocumentContent, startEditorSession])
 
+  // Scroll to a requested section (1-indexed) once content is loaded.
+  useEffect(() => {
+    if (!editor || pendingSectionIndex == null) return
+    // Section i starts after the (i-1)-th sceneBreak; section 1 = top.
+    let breaksSeen = 0
+    let targetPos: number | null = null
+    if (pendingSectionIndex <= 1) {
+      targetPos = 1
+    } else {
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'sceneBreak') {
+          breaksSeen += 1
+          if (breaksSeen === pendingSectionIndex - 1) {
+            targetPos = pos + node.nodeSize
+            return false
+          }
+        }
+        return true
+      })
+    }
+    if (targetPos != null) {
+      const pos = Math.min(targetPos, editor.state.doc.content.size)
+      editor.chain().setTextSelection(pos).scrollIntoView().run()
+    }
+    clearPendingSectionScroll()
+  }, [editor, activeDocumentId, pendingSectionIndex, clearPendingSectionScroll])
+
   // Flush pending document content on unmount
   useEffect(() => {
     return () => {
@@ -271,8 +312,32 @@ export function EditorArea() {
     editor.view.dispatch(tr)
   }, [editor, analysisResult, activeMode, selectedIssueId])
 
+  // Model → on-page chapter title (guarded against feedback loop)
+  const activeItem = project ? findManuscriptItem(project.manuscript.items, activeDocumentId ?? '') : null
+  const activeTitle = activeItem?.title
+  useEffect(() => {
+    if (!editor || !activeDocumentId || activeTitle === undefined) return
+    const first = editor.state.doc.firstChild
+    if (!first || first.type.name !== 'chapterTitle') return
+    if (first.textContent === activeTitle) return
+    programmaticTitleRef.current = true
+    editor.chain()
+      .command(({ tr }) => {
+        const end = first.nodeSize - 1
+        tr.insertText(activeTitle, 1, end)
+        return true
+      })
+      .run()
+    programmaticTitleRef.current = false
+  }, [editor, activeDocumentId, activeTitle])
+
   if (!project) {
     return null
+  }
+
+  // Show note editor if a chapter note is open
+  if (activeNoteId) {
+    return <NoteEditor />
   }
 
   // Show report viewer if a report is active

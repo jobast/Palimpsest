@@ -577,6 +577,19 @@ ipcMain.handle('fs:exists', async (_, filePath: string) => {
   }
 })
 
+ipcMain.handle('fs:deleteFile', async (_, filePath: string) => {
+  try {
+    const { safePath, safeProjectRoot } = await assertProjectScopedPath(filePath)
+    await trackBackupForWrite(safeProjectRoot, safePath)  // journal-aware: restorable
+    await fs.promises.unlink(safePath).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== 'ENOENT') throw err   // deleting a missing file is a no-op
+    })
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
 ipcMain.handle('fs:beginSaveJournal', async (_, projectPath: string) => {
   try {
     const { safeProjectRoot } = await assertProjectRootPath(projectPath)
@@ -680,6 +693,39 @@ ipcMain.handle('export:savePDF', async (_, data: Buffer, defaultFilename: string
     return { success: true, filePath: result.filePath }
   } catch (error) {
     return { success: false, error: String(error) }
+  }
+})
+
+// Vector PDF of the whole book: render print HTML in a hidden window, printToPDF.
+ipcMain.handle('export:printBookPdf', async (_, payload: {
+  html: string
+  displayHeaderFooter: boolean
+  headerTemplate: string
+  footerTemplate: string
+}) => {
+  let win: BrowserWindow | null = null
+  let tmpFile: string | null = null
+  try {
+    tmpFile = path.join(app.getPath('temp'), `palimpseste-print-${Date.now()}.html`)
+    await fs.promises.writeFile(tmpFile, payload.html, 'utf-8')
+    win = new BrowserWindow({
+      show: false,
+      webPreferences: { javascript: false, sandbox: true }
+    })
+    await win.loadFile(tmpFile)
+    const pdfData = await win.webContents.printToPDF({
+      preferCSSPageSize: true,
+      printBackground: true,
+      displayHeaderFooter: payload.displayHeaderFooter,
+      headerTemplate: payload.headerTemplate || '<span></span>',
+      footerTemplate: payload.footerTemplate || '<span></span>'
+    })
+    return { success: true, data: pdfData }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  } finally {
+    if (win && !win.isDestroyed()) win.close()
+    if (tmpFile) await fs.promises.unlink(tmpFile).catch(() => undefined)
   }
 })
 

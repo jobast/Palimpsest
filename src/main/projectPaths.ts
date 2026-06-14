@@ -99,9 +99,10 @@ export async function assertProjectRootPath(projectPath: string): Promise<{
 export async function hasRequiredProjectFiles(projectPath: string): Promise<boolean> {
   try {
     const { safeProjectRoot } = await assertProjectRootPath(projectPath)
+    // The manifest project.json (meta + chapters list) is the single source of
+    // truth for a project; the manuscript now lives in chapitres/*.md.
     const requiredFiles = [
-      'project.json',
-      path.join('manuscript', 'structure.json')
+      'project.json'
     ]
 
     for (const relativePath of requiredFiles) {
@@ -115,6 +116,8 @@ export async function hasRequiredProjectFiles(projectPath: string): Promise<bool
 }
 
 export async function writeFileAtomic(targetPath: string, content: string | Buffer): Promise<void> {
+  // Ensure the target directory exists (e.g. chapitres/ for a newly-named chapter).
+  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true })
   const tmpPath = path.join(
     path.dirname(targetPath),
     `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`

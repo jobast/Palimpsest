@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readDirectory: (dirPath: string) =>
     ipcRenderer.invoke('fs:readDirectory', dirPath),
   exists: (filePath: string) => ipcRenderer.invoke('fs:exists', filePath),
+  deleteFile: (filePath: string) => ipcRenderer.invoke('fs:deleteFile', filePath),
   beginSaveJournal: (projectPath: string) =>
     ipcRenderer.invoke('fs:beginSaveJournal', projectPath),
   commitSaveJournal: (projectPath: string) =>
@@ -83,6 +84,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   savePDF: (data: Buffer, defaultFilename: string) =>
     ipcRenderer.invoke('export:savePDF', data, defaultFilename),
+
+  printBookPdf: (payload: {
+    html: string
+    displayHeaderFooter: boolean
+    headerTemplate: string
+    footerTemplate: string
+  }) => ipcRenderer.invoke('export:printBookPdf', payload),
 
   // AI key management + chat
   aiGetKeyStatus: () => ipcRenderer.invoke('ai:getKeyStatus'),

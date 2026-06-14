@@ -27,6 +27,7 @@ import {
   Sparkles
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { countSections } from '@shared/markdown'
 import type { ManuscriptItem, LocationSheet, CharacterSheet, PlotSheet, AIReport } from '@shared/types/project'
 import { useState } from 'react'
 import { GlobalMapView } from '../maps/GlobalMapView'
@@ -115,8 +116,14 @@ function ManuscriptPanel() {
     addManuscriptItem,
     updateManuscriptItem,
     deleteManuscriptItem,
-    duplicateManuscriptItem
+    duplicateManuscriptItem,
+    renameChapter,
+    setActiveNote,
+    chaptersWithNote,
+    activeNoteId
   } = useProjectStore()
+  const documentContents = useEditorStore((s) => s.documentContents)
+  const requestSectionScroll = useEditorStore((s) => s.requestSectionScroll)
 
   if (!project) return null
 
@@ -147,19 +154,27 @@ function ManuscriptPanel() {
       </div>
 
       <div className="space-y-0.5">
-        {project.manuscript.items.map((item) => (
-          <ManuscriptTreeItem
-            key={item.id}
-            item={item}
-            activeId={activeDocumentId}
-            onSelect={setActiveDocument}
-            onUpdate={updateManuscriptItem}
-            onDelete={deleteManuscriptItem}
-            onDuplicate={duplicateManuscriptItem}
-            onAddChild={addManuscriptItem}
-            depth={0}
-          />
-        ))}
+        {project.manuscript.items.map((item) => {
+          const sectionCount = countSections(documentContents.get(item.id))
+          return (
+            <ManuscriptTreeItem
+              key={item.id}
+              item={item}
+              activeId={activeDocumentId}
+              onSelect={setActiveDocument}
+              onUpdate={updateManuscriptItem}
+              onRename={renameChapter}
+              onDelete={deleteManuscriptItem}
+              onDuplicate={duplicateManuscriptItem}
+              hasNote={chaptersWithNote.has(item.id)}
+              sectionCount={sectionCount}
+              onSelectSection={(index) => { setActiveDocument(item.id); requestSectionScroll(index) }}
+              onOpenNote={() => setActiveNote(item.id)}
+              activeNoteId={activeNoteId}
+              depth={0}
+            />
+          )
+        })}
       </div>
     </div>
   )
@@ -170,42 +185,42 @@ function ManuscriptTreeItem({
   activeId,
   onSelect,
   onUpdate,
+  onRename,
   onDelete,
   onDuplicate,
-  onAddChild,
+  hasNote,
+  sectionCount,
+  onSelectSection,
+  onOpenNote,
+  activeNoteId,
   depth
 }: {
   item: ManuscriptItem
   activeId: string | null
   onSelect: (id: string) => void
   onUpdate: (id: string, updates: Partial<ManuscriptItem>) => void
+  onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
-  onAddChild: (item: ManuscriptItem, parentId?: string) => void
+  hasNote: boolean
+  sectionCount: number
+  onSelectSection: (index: number) => void
+  onOpenNote: () => void
+  activeNoteId: string | null
   depth: number
 }) {
   const [expanded, setExpanded] = useState(true)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(item.title)
-  const hasChildren = item.children && item.children.length > 0
+  const hasDerivedChildren = sectionCount >= 2 || hasNote
 
   const icon = item.type === 'folder' ? <Folder size={14} /> : <FileText size={14} />
 
   const handleRename = () => {
     if (renameValue.trim() && renameValue !== item.title) {
-      onUpdate(item.id, { title: renameValue.trim() })
+      onRename(item.id, renameValue.trim())
     }
     setIsRenaming(false)
-  }
-
-  const handleAddScene = () => {
-    onAddChild({
-      id: crypto.randomUUID(),
-      type: 'scene',
-      title: `Scene ${(item.children?.length || 0) + 1}`,
-      status: 'draft',
-      wordCount: 0
-    }, item.id)
   }
 
   const statusIcons = {
@@ -228,7 +243,7 @@ function ManuscriptTreeItem({
             )}
             style={{ paddingLeft: `${depth * 12 + 8}px` }}
           >
-            {hasChildren && (
+            {hasDerivedChildren && (
               <span
                 onClick={(e) => {
                   e.stopPropagation()
@@ -239,7 +254,7 @@ function ManuscriptTreeItem({
                 {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </span>
             )}
-            {!hasChildren && <span className="w-4" />}
+            {!hasDerivedChildren && <span className="w-4" />}
             {icon}
             {isRenaming ? (
               <input
@@ -309,9 +324,16 @@ function ManuscriptTreeItem({
           {item.type === 'chapter' && (
             <>
               <ContextMenuSeparator />
-              <ContextMenuItem onClick={handleAddScene}>
+              <ContextMenuItem onClick={() => {
+                const ed = useEditorStore.getState().editor
+                if (ed) ed.chain().focus().insertSceneBreak().run()
+              }}>
                 <Plus size={14} className="mr-2" />
-                Ajouter une scene
+                Insérer un saut de scène
+              </ContextMenuItem>
+              <ContextMenuItem onClick={onOpenNote}>
+                <StickyNote size={14} className="mr-2" />
+                Note du chapitre
               </ContextMenuItem>
             </>
           )}
@@ -328,21 +350,34 @@ function ManuscriptTreeItem({
         </ContextMenuContent>
       </ContextMenu>
 
-      {hasChildren && expanded && (
+      {expanded && hasDerivedChildren && (
         <div>
-          {item.children!.map((child) => (
-            <ManuscriptTreeItem
-              key={child.id}
-              item={child}
-              activeId={activeId}
-              onSelect={onSelect}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
-              onDuplicate={onDuplicate}
-              onAddChild={onAddChild}
-              depth={depth + 1}
-            />
+          {sectionCount >= 2 && Array.from({ length: sectionCount }, (_, i) => (
+            <button
+              key={`sec-${i}`}
+              onClick={() => onSelectSection(i + 1)}
+              className="w-full flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:bg-accent"
+              style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
+            >
+              <span className="w-4" />
+              <FileText size={12} />
+              <span className="truncate flex-1 text-left">Section {i + 1}</span>
+            </button>
           ))}
+          {hasNote && (
+            <button
+              onClick={onOpenNote}
+              className={cn(
+                'w-full flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-accent',
+                activeNoteId === item.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+              )}
+              style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
+            >
+              <span className="w-4" />
+              <StickyNote size={12} />
+              <span className="truncate flex-1 text-left">Note</span>
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -47,6 +47,11 @@ interface EditorState {
   clearDocumentContents: () => void
   flushCurrentDocument: (activeDocumentId: string | null) => void  // Force save current editor content to store
 
+  // Section scroll
+  pendingSectionIndex: number | null
+  requestSectionScroll: (index: number) => void
+  clearPendingSectionScroll: () => void
+
   // Word tracking
   startSession: (initialWords: number) => void
   updateWordCount: (currentCount: number, addedSinceLastUpdate: number, deletedSinceLastUpdate: number) => void
@@ -65,7 +70,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   wordsDeleted: 0,
   sessionStartTime: null,
 
+  pendingSectionIndex: null,
+
   setEditor: (editor) => set({ editor }),
+
+  requestSectionScroll: (index) => set({ pendingSectionIndex: index }),
+  clearPendingSectionScroll: () => set({ pendingSectionIndex: null }),
 
   setTemplate: (templateId) => {
     const template = defaultTemplates.find(t => t.id === templateId)

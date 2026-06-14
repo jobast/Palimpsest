@@ -6,7 +6,6 @@ import { defaultTemplates } from '@shared/types/templates'
 import {
   Bold,
   Italic,
-  Underline,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -61,7 +60,7 @@ const FIRST_LINE_INDENTS = [
  *
  * Panel for text formatting options in the right sidebar:
  * - Font family and size
- * - Bold, Italic, Underline
+ * - Bold, Italic
  * - Text alignment
  * - First line indent
  * - Line spacing
@@ -140,10 +139,6 @@ export function FormattingPanel() {
     editor?.chain().focus().toggleItalic().run()
   }, [editor])
 
-  const toggleUnderline = useCallback(() => {
-    editor?.chain().focus().toggleUnderline().run()
-  }, [editor])
-
   const setAlignment = useCallback((align: 'left' | 'center' | 'right' | 'justify') => {
     editor?.chain().focus().setTextAlign(align).run()
   }, [editor])
@@ -151,7 +146,6 @@ export function FormattingPanel() {
   // Check active states
   const isBold = editor?.isActive('bold') ?? false
   const isItalic = editor?.isActive('italic') ?? false
-  const isUnderline = editor?.isActive('underline') ?? false
   const isAlignLeft = editor?.isActive({ textAlign: 'left' }) ?? true
   const isAlignCenter = editor?.isActive({ textAlign: 'center' }) ?? false
   const isAlignRight = editor?.isActive({ textAlign: 'right' }) ?? false
@@ -260,12 +254,6 @@ export function FormattingPanel() {
             active={isItalic}
             onClick={toggleItalic}
             title="Italique (⌘I)"
-          />
-          <FormatButton
-            icon={<Underline size={16} />}
-            active={isUnderline}
-            onClick={toggleUnderline}
-            title="Souligné (⌘U)"
           />
         </div>
       </section>

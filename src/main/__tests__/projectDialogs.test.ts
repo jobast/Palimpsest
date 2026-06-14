@@ -53,9 +53,8 @@ test('validateOpenProjectSelection accepts valid project', async () => {
   const projectRoot = path.join(sandbox, 'book.palim')
 
   try {
-    await fs.promises.mkdir(path.join(projectRoot, 'manuscript'), { recursive: true })
-    await fs.promises.writeFile(path.join(projectRoot, 'project.json'), '{}', 'utf-8')
-    await fs.promises.writeFile(path.join(projectRoot, 'manuscript', 'structure.json'), '{}', 'utf-8')
+    await fs.promises.mkdir(path.join(projectRoot, 'chapitres'), { recursive: true })
+    await fs.promises.writeFile(path.join(projectRoot, 'project.json'), '{"chapters":[]}', 'utf-8')
 
     const result = await validateOpenProjectSelection({
       canceled: false,
