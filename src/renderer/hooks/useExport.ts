@@ -1,13 +1,14 @@
 import { useCallback, useState } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { useUIStore } from '@/stores/uiStore'
 import {
   exportToDocx,
   downloadDocx
 } from '@/lib/export'
-import { capturePageImages, assembleBookPdf, downloadPdf } from '@/lib/export/pdfExporter'
+import { downloadPdf } from '@/lib/export/pdfExporter'
 import { flattenChapterIds } from '@shared/manuscript/order'
+import { docToPrintHtml, buildBookHtml, buildPrintHeaderFooter } from '@shared/export/printHtml'
+import type { TipTapDoc } from '@shared/markdown'
 
 export interface ExportState {
   isExporting: boolean
@@ -79,74 +80,43 @@ export function useExport() {
   }, [editor, currentTemplate, project])
 
   /**
-   * Export to PDF format - captures all chapters in manuscript order
-   * Loads each chapter into the editor and captures its pages before assembling.
+   * Export to PDF format - vector PDF rendered in the main process via Chromium printToPDF
    */
   const exportPdf = useCallback(async () => {
     if (!editor || !project) {
       setState(s => ({ ...s, error: 'Éditeur ou projet non disponible' }))
       return
     }
-
-    const { setIsExportingPdf, zoomLevel, setZoomLevel } = useUIStore.getState()
-    const originalZoom = zoomLevel
-    const originalDocId = useProjectStore.getState().activeDocumentId
-    const originalNoteId = useProjectStore.getState().activeNoteId
-    const originalSheetId = useProjectStore.getState().activeSheetId
-    const originalReportId = useProjectStore.getState().activeReportId
-
     setState({ isExporting: true, progress: 0, format: 'pdf', error: null })
-
     try {
-      setIsExportingPdf(true)
-      if (zoomLevel !== 100) setZoomLevel(100)
-
-      // Flush the active chapter, then collect chapters that have content.
-      useEditorStore.getState().flushCurrentDocument(originalDocId)
+      // Flush the active chapter so its latest edits are in documentContents.
+      useEditorStore.getState().flushCurrentDocument(useProjectStore.getState().activeDocumentId)
       const { documentContents } = useEditorStore.getState()
-      const ids = flattenChapterIds(project.manuscript.items)
-        .filter(id => !!documentContents.get(id))
+      const chapterHtmls = flattenChapterIds(project.manuscript.items)
+        .map(id => documentContents.get(id))
+        .filter((c): c is string => !!c)
+        .map(json => docToPrintHtml(JSON.parse(json) as TipTapDoc))
 
-      if (ids.length === 0) {
+      if (chapterHtmls.length === 0) {
         setState({ isExporting: false, progress: 0, format: null, error: 'Rien à exporter' })
         return
       }
 
-      const allPages: string[] = []
-      for (let i = 0; i < ids.length; i++) {
-        // Load this chapter into the editor and let pagination settle.
-        useProjectStore.getState().setActiveDocument(ids[i])
-        await new Promise(resolve => setTimeout(resolve, 600))
+      setState(s => ({ ...s, progress: 30 }))
+      const html = buildBookHtml(chapterHtmls, currentTemplate, project)
+      const { displayHeaderFooter, headerTemplate, footerTemplate } =
+        buildPrintHeaderFooter(currentTemplate, project)
 
-        let editorElement = document.querySelector('.ProseMirror.rm-with-pagination') as HTMLElement | null
-        if (!editorElement) {
-          // One retry - the editor may still be mounting.
-          await new Promise(resolve => setTimeout(resolve, 600))
-          editorElement = document.querySelector('.ProseMirror.rm-with-pagination') as HTMLElement | null
-        }
-        if (!editorElement) {
-          console.warn('Chapitre ignoré (éditeur introuvable):', ids[i])
-          continue
-        }
-
-        // Force visibility (defeat virtualization) before capture.
-        editorElement.style.contentVisibility = 'visible'
-        editorElement.querySelectorAll('.rm-page-break').forEach(pb => {
-          (pb as HTMLElement).style.contentVisibility = 'visible'
-        })
-        await new Promise(resolve => setTimeout(resolve, 200))
-
-        const pages = await capturePageImages(editorElement, currentTemplate, 'standard')
-        allPages.push(...pages)
-        setState(s => ({ ...s, progress: Math.round(((i + 1) / ids.length) * 90) }))
+      setState(s => ({ ...s, progress: 50 }))
+      const result = await window.electronAPI.printBookPdf({
+        html, displayHeaderFooter, headerTemplate, footerTemplate
+      })
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'Échec du rendu PDF')
       }
 
-      if (allPages.length === 0) {
-        throw new Error('Aucune page capturée')
-      }
-
-      const blob = assembleBookPdf(allPages, currentTemplate, project)
-      setState(s => ({ ...s, progress: 95 }))
+      setState(s => ({ ...s, progress: 85 }))
+      const blob = new Blob([result.data as BlobPart], { type: 'application/pdf' })
       await downloadPdf(blob, `${project.meta.name}.pdf`)
       setState(s => ({ ...s, progress: 100 }))
       setTimeout(() => {
@@ -155,24 +125,9 @@ export function useExport() {
     } catch (error) {
       console.error('PDF export failed:', error)
       setState({
-        isExporting: false,
-        progress: 0,
-        format: null,
+        isExporting: false, progress: 0, format: null,
         error: `Échec de l'export PDF: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
       })
-    } finally {
-      // Restore virtualization, zoom and the original view (whichever it was).
-      setIsExportingPdf(false)
-      if (originalZoom !== 100) setZoomLevel(originalZoom)
-      if (originalNoteId) {
-        useProjectStore.getState().setActiveNote(originalNoteId)
-      } else if (originalSheetId) {
-        useProjectStore.getState().setActiveSheet(originalSheetId)
-      } else if (originalReportId) {
-        useProjectStore.getState().setActiveReport(originalReportId)
-      } else if (originalDocId) {
-        useProjectStore.getState().setActiveDocument(originalDocId)
-      }
     }
   }, [editor, currentTemplate, project])
 
