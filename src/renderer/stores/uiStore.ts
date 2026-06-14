@@ -25,6 +25,9 @@ interface UIState {
   // Export state
   isExportingPdf: boolean
 
+  // Section
+  activeSection: 'ecriture' | 'univers'
+
   // Actions
   toggleSidebar: () => void
   setSidebarPanel: (panel: SidebarPanel) => void
@@ -43,6 +46,7 @@ interface UIState {
   zoomOut: () => void
   resetZoom: () => void
   setIsExportingPdf: (value: boolean) => void
+  setActiveSection: (activeSection: 'ecriture' | 'univers') => void
 }
 
 // Apply theme to document
@@ -87,6 +91,9 @@ export const useUIStore = create<UIState>()(
       // Export state
       isExportingPdf: false,
 
+      // Section
+      activeSection: 'ecriture',
+
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
       setSidebarPanel: (panel) => set({ sidebarPanel: panel, sidebarOpen: true }),
@@ -122,7 +129,8 @@ export const useUIStore = create<UIState>()(
       zoomIn: () => set((state) => ({ zoomLevel: Math.min(200, state.zoomLevel + 10) })),
       zoomOut: () => set((state) => ({ zoomLevel: Math.max(50, state.zoomLevel - 10) })),
       resetZoom: () => set({ zoomLevel: 100 }),
-      setIsExportingPdf: (value) => set({ isExportingPdf: value })
+      setIsExportingPdf: (value) => set({ isExportingPdf: value }),
+      setActiveSection: (activeSection) => set({ activeSection })
     }),
     {
       name: 'palimpseste-ui-settings',
@@ -131,7 +139,8 @@ export const useUIStore = create<UIState>()(
         paperColor: state.paperColor,
         autoSaveEnabled: state.autoSaveEnabled,
         autoSaveInterval: state.autoSaveInterval,
-        zoomLevel: state.zoomLevel
+        zoomLevel: state.zoomLevel,
+        activeSection: state.activeSection
       }),
       onRehydrateStorage: () => (state) => {
         // Apply saved settings on app start
