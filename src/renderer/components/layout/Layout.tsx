@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useUIStore } from '@/stores/uiStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { Sidebar } from './Sidebar'
@@ -9,13 +9,14 @@ import { StatsPanel } from '../stats/StatsPanel'
 import { FormattingPanel } from '../editor/FormattingPanel'
 import { AnalysisPanel } from '../analysis/AnalysisPanel'
 import { AIPanel } from '../ai/AIPanel'
+import { UniversLayout } from '../univers/UniversLayout'
 import { cn } from '@/lib/utils'
 import { BarChart3, Type, Search, Bot, X } from 'lucide-react'
 
 type RightSidebarTab = 'stats' | 'format' | 'analysis' | 'ai'
 
 export function Layout() {
-  const { sidebarOpen, focusMode, statsSidebarOpen, toggleFocusMode } = useUIStore()
+  const { sidebarOpen, focusMode, statsSidebarOpen, toggleFocusMode, activeSection, setActiveSection } = useUIStore()
   const { project, isLoading } = useProjectStore()
   const [rightSidebarTab, setRightSidebarTab] = useState<RightSidebarTab>('stats')
 
@@ -37,6 +38,16 @@ export function Layout() {
       {!focusMode && (
         <div className="h-8 titlebar-drag-region bg-background border-b border-border flex items-center px-20">
           <span className="text-xs text-muted-foreground">{project.meta.name}</span>
+          <div className="ml-4 flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            <button
+              onClick={() => setActiveSection('ecriture')}
+              className={cn('px-2 py-0.5 rounded text-xs', activeSection === 'ecriture' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground')}
+            >Écriture</button>
+            <button
+              onClick={() => setActiveSection('univers')}
+              className={cn('px-2 py-0.5 rounded text-xs', activeSection === 'univers' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground')}
+            >Univers</button>
+          </div>
         </div>
       )}
 
@@ -57,6 +68,9 @@ export function Layout() {
       )}
 
       {/* Main content */}
+      {activeSection === 'univers' && !focusMode ? (
+        <UniversLayout />
+      ) : (
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar - Manuscript */}
         <div
@@ -147,6 +161,7 @@ export function Layout() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }
