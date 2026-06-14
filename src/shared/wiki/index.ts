@@ -1,4 +1,5 @@
 export * from './types.js'
+export * from './migrate.js'
 export * from './fiche.js'
 export * from './suggestion.js'
 export * from './alert.js'
