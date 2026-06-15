@@ -35,6 +35,7 @@ export function FicheNavigator() {
     setBatch({ done: 0, total: 0, title: '' })
     try {
       const r = await analyzeManuscript(p => setBatch(p), () => !cancelRef.current)
+      await useWikiStore.getState().refreshSuggestions()
       const tail = r.cancelled ? ' (interrompu)' : ''
       const fails = r.failures ? `, ${r.failures} échec(s)` : ''
       showNotification(r.failures ? 'error' : 'success',

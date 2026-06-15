@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ingestChapter } from '@/lib/wiki/ingest'
+import { useWikiStore } from '@/stores/wikiStore'
 
 export function Toolbar() {
   const { editor } = useEditorStore()
@@ -45,6 +46,7 @@ export function Toolbar() {
     setAnalyzing(true)
     try {
       const r = await ingestChapter(activeDocumentId)
+      await useWikiStore.getState().refreshSuggestions()
       const extra = r.ignored ? `, ${r.ignored} ignorée(s)` : ''
       showNotification('success',
         `Univers mis à jour : ${r.fichesCreated} fiche(s) créée(s), ${r.fichesUpdated} enrichie(s), ${r.alerts} alerte(s)${extra}.`)
