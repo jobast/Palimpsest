@@ -5,15 +5,18 @@ import { useUIStore } from '@/stores/uiStore'
 import { runEngine } from '@/lib/wiki/engine'
 import {
   createFiche as ioCreateFiche, saveFiche as ioSaveFiche, saveAlert,
-  appendLog, markChapterIntegrated, writeWikiIndex, loadAlerts, loadSuggestions, loadIntegrations,
-  addSuggestions
+  appendLog, writeWikiIndex, loadAlerts, loadSuggestions, loadIntegrations,
+  addSuggestions, recordIntegration, mergeIntegration, removeIntegration, deleteAlert,
+  loadFiches, deleteFiche as ioDeleteFiche
 } from '@/lib/wiki/wikiIO'
 import { chaptersToAnalyze } from '@shared/manuscript/order'
 import { docToMarkdownBody } from '@shared/markdown'
 import {
   WIKI_SYSTEM_PROMPT, buildWikiUpdatePrompt, buildFichesSummary, parseIngestOutput,
   appendIngestSection, addSourceToFiche, suggestionToAlert,
-  WIKI_CATEGORIES, type WikiCategory, type Fiche, type Alert, type Suggestion
+  removeIngestSection, emptyIntegrationRecord,
+  WIKI_CATEGORIES, type WikiCategory, type Fiche, type Alert, type Suggestion,
+  type IntegrationRecord
 } from '@shared/wiki'
 import type { ManuscriptItem } from '@shared/types/project'
 
@@ -72,29 +75,35 @@ function findFicheByCible(fiches: Fiche[], cible: string, title: string): Fiche 
   return byTitle.length === 1 ? byTitle[0] : null
 }
 
-/** Apply ONE suggestion to disk (basic mode / accept). Returns the updated working list + a delta. */
+type ApplyRef =
+  | { kind: 'created'; category: WikiCategory; slug: string }
+  | { kind: 'appended'; category: WikiCategory; slug: string }
+  | { kind: 'alert'; alertId: string }
+  | { kind: 'ignored' }
+
+/** Apply ONE suggestion to disk (basic mode / accept). Returns the updated working list + a delta + a ref. */
 async function applyOneSuggestion(
   projectPath: string, s: Suggestion, chapterId: string, working: Fiche[], day: string
-): Promise<{ working: Fiche[]; created: number; updated: number; alerts: number; ignored: number }> {
+): Promise<{ working: Fiche[]; created: number; updated: number; alerts: number; ignored: number; ref: ApplyRef }> {
   if (s.type === 'nouvelle_fiche') {
     const cat: WikiCategory = (WIKI_CATEGORIES as string[]).includes(s.cible) ? (s.cible as WikiCategory) : 'notes'
     const fiche = await ioCreateFiche(projectPath, cat, s.title, s.body, working)
-    return { working: [...working, fiche], created: 1, updated: 0, alerts: 0, ignored: 0 }
+    return { working: [...working, fiche], created: 1, updated: 0, alerts: 0, ignored: 0, ref: { kind: 'created', category: fiche.category, slug: fiche.slug } }
   }
   if (s.type === 'ajout') {
     const target = findFicheByCible(working, s.cible, s.title)
-    if (!target) return { working, created: 0, updated: 0, alerts: 0, ignored: 1 }
+    if (!target) return { working, created: 0, updated: 0, alerts: 0, ignored: 1, ref: { kind: 'ignored' } }
     let f = appendIngestSection(target, chapterId, s.body, day)
     f = addSourceToFiche(f, chapterId, day)
     await ioSaveFiche(projectPath, f)
     return {
       working: working.map(x => (x.category === f.category && x.slug === f.slug ? f : x)),
-      created: 0, updated: 1, alerts: 0, ignored: 0
+      created: 0, updated: 1, alerts: 0, ignored: 0, ref: { kind: 'appended', category: f.category, slug: f.slug }
     }
   }
   const alert: Alert = { ...suggestionToAlert(s, day), id: crypto.randomUUID() }
   await saveAlert(projectPath, alert)
-  return { working, created: 0, updated: 0, alerts: 1, ignored: 0 }
+  return { working, created: 0, updated: 0, alerts: 1, ignored: 0, ref: { kind: 'alert', alertId: alert.id } }
 }
 
 /**
@@ -142,13 +151,14 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
     await appendLog(projectPath, 'analyse', item.title, `${queued.length} suggestion(s) en attente`)
     // Mark integrated so the batch does not re-analyze (and re-queue) an already-analyzed
     // chapter; the queued suggestions await review. Re-analysis ("tout reanalyser") is a later slice.
-    await markChapterIntegrated(projectPath, chapterId)
+    await recordIntegration(projectPath, chapterId, emptyIntegrationRecord(day))
     return { fichesCreated: 0, fichesUpdated: 0, alerts: 0, ignored: 0, queued: queued.length, summary }
   }
 
   // Basic mode: auto-apply, new fiches first so same-run "ajout" can target them.
   let working: Fiche[] = [...currentFiches]
   let fichesCreated = 0, fichesUpdated = 0, alertCount = 0, ignored = 0
+  const record = emptyIntegrationRecord(day)
   const ordered = [
     ...suggestions.filter(s => s.type === 'nouvelle_fiche'),
     ...suggestions.filter(s => s.type === 'ajout'),
@@ -161,6 +171,9 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
     fichesUpdated += r.updated
     alertCount += r.alerts
     ignored += r.ignored
+    if (r.ref.kind === 'created') record.created.push({ category: r.ref.category, slug: r.ref.slug })
+    else if (r.ref.kind === 'appended') record.appended.push({ category: r.ref.category, slug: r.ref.slug })
+    else if (r.ref.kind === 'alert') record.alerts.push(r.ref.alertId)
   }
 
   // Chapter summary -> synopsis (visible in the manuscript).
@@ -171,7 +184,7 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
 
   await appendLog(projectPath, 'ingest', item.title,
     `${fichesCreated} créée(s), ${fichesUpdated} enrichie(s), ${alertCount} alerte(s)`)
-  await markChapterIntegrated(projectPath, chapterId)
+  await recordIntegration(projectPath, chapterId, record)
   await writeWikiIndex(projectPath, working)
   await useWikiStore.getState().loadWiki(projectPath)
 
@@ -237,6 +250,44 @@ export async function applySuggestion(projectPath: string, s: Suggestion): Promi
   const working = [...useWikiStore.getState().fiches]
   const chapterId = s.sourceChapitre ?? 'manuel'
   const r = await applyOneSuggestion(projectPath, s, chapterId, working, today())
+  if (r.ref.kind === 'created') await mergeIntegration(projectPath, chapterId, { created: [{ category: r.ref.category, slug: r.ref.slug }] })
+  else if (r.ref.kind === 'appended') await mergeIntegration(projectPath, chapterId, { appended: [{ category: r.ref.category, slug: r.ref.slug }] })
+  else if (r.ref.kind === 'alert') await mergeIntegration(projectPath, chapterId, { alerts: [r.ref.alertId] })
   await writeWikiIndex(projectPath, r.working)
   await useWikiStore.getState().loadWiki(projectPath)
+}
+
+export interface UndoResult { deleted: number; reverted: number; alertsRemoved: number }
+
+/** Undo everything a chapter wrote to the Univers: delete created fiches, strip its
+ *  appended sections, delete its alerts, and de-integrate it. */
+export async function undoChapterIntegration(chapterId: string): Promise<UndoResult> {
+  const projectPath = useProjectStore.getState().projectPath
+  if (!projectPath) throw new Error('Aucun projet ouvert')
+  const integrations = await loadIntegrations(projectPath)
+  const rec: IntegrationRecord | undefined = integrations[chapterId]
+  if (!rec) return { deleted: 0, reverted: 0, alertsRemoved: 0 }
+
+  const fiches = await loadFiches(projectPath)
+  let deleted = 0, reverted = 0, alertsRemoved = 0
+
+  for (const ref of rec.created) {
+    const f = fiches.find(x => x.category === ref.category && x.slug === ref.slug)
+    if (f) { await ioDeleteFiche(projectPath, f); deleted += 1 }
+  }
+  for (const ref of rec.appended) {
+    const f = fiches.find(x => x.category === ref.category && x.slug === ref.slug)
+    if (!f) continue
+    const body = removeIngestSection(f.body, chapterId)
+    const nextSources = (f.sources ?? []).filter(srcId => srcId !== chapterId)
+    const updated: Fiche = { ...f, body, sources: nextSources.length ? nextSources : undefined }
+    await ioSaveFiche(projectPath, updated)
+    reverted += 1
+  }
+  for (const id of rec.alerts) { await deleteAlert(projectPath, id); alertsRemoved += 1 }
+
+  await removeIntegration(projectPath, chapterId)
+  await writeWikiIndex(projectPath, await loadFiches(projectPath))
+  await useWikiStore.getState().loadWiki(projectPath)
+  return { deleted, reverted, alertsRemoved }
 }

@@ -162,13 +162,6 @@ export async function removeIntegration(projectPath: string, chapterId: string):
   await writeIntegrations(projectPath, integrations)
 }
 
-export async function markChapterIntegrated(projectPath: string, chapterId: string): Promise<void> {
-  await ensureDir(`${projectPath}/wiki`)
-  const integrations = await loadIntegrations(projectPath)
-  integrations[chapterId] = { at: new Date().toISOString(), created: [], appended: [], alerts: [] }
-  await window.electronAPI.writeFile(`${projectPath}/wiki/integrations.json`, JSON.stringify(integrations, null, 2))
-}
-
 /**
  * Prepare the wiki for an external agent (Claude Code): create the category folders
  * and write wiki/CLAUDE.md (the operating manual). Returns the doc's path.
