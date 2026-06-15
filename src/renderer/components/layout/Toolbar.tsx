@@ -27,7 +27,8 @@ import {
   Sun,
   Moon,
   Sparkles,
-  Loader2
+  Loader2,
+  RotateCcw
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ingestChapter } from '@/lib/wiki/ingest'
@@ -40,6 +41,20 @@ export function Toolbar() {
   const activeDocumentId = useProjectStore(s => s.activeDocumentId)
   const showNotification = useStatsStore(s => s.showNotification)
   const [analyzing, setAnalyzing] = useState(false)
+  const integrations = useWikiStore(s => s.integrations)
+  const undoChapter = useWikiStore(s => s.undoChapter)
+  const isIntegrated = !!activeDocumentId && !!integrations[activeDocumentId]
+
+  const handleUndoChapter = async () => {
+    if (!activeDocumentId) return
+    if (!confirm('Annuler l\'intégration de ce chapitre dans l\'Univers ?')) return
+    try {
+      await undoChapter(activeDocumentId)
+      showNotification('success', "Intégration annulée pour ce chapitre.")
+    } catch (e) {
+      showNotification('error', `Annulation KO : ${e instanceof Error ? e.message : 'erreur'}`)
+    }
+  }
 
   const handleAnalyzeChapter = async () => {
     if (!activeDocumentId) { showNotification('error', 'Ouvre un chapitre à analyser'); return }
@@ -89,6 +104,14 @@ export function Toolbar() {
         disabled={analyzing}
         title="Analyser ce chapitre dans l'Univers"
       />
+
+      {isIntegrated && (
+        <ToolbarButton
+          icon={<RotateCcw size={16} />}
+          onClick={() => { void handleUndoChapter() }}
+          title="Annuler l'intégration de ce chapitre"
+        />
+      )}
 
       <ToolbarSeparator />
 
