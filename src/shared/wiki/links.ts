@@ -25,6 +25,18 @@ export function extractWikilinks(body: string): WikiLink[] {
   return out
 }
 
+/** Convert [[target|display]] wikilinks into markdown links `[display](wiki:target)`
+ *  (target percent-encoded), so a markdown renderer can show them as clickable links. */
+export function wikilinksToMarkdown(body: string): string {
+  const links = extractWikilinks(body)
+  let out = body
+  for (let i = links.length - 1; i >= 0; i--) {
+    const l = links[i]
+    out = out.slice(0, l.start) + `[${l.display}](wiki:${encodeURIComponent(l.target)})` + out.slice(l.end)
+  }
+  return out
+}
+
 /** Resolve a link target: (1) exact "category/slug", (2) unique slug, (3) title (normalized). */
 export function resolveWikilink(target: string, fiches: Fiche[]): Fiche | null {
   const t = target.trim()
