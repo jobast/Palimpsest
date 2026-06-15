@@ -14,7 +14,7 @@ import { docToMarkdownBody } from '@shared/markdown'
 import {
   WIKI_SYSTEM_PROMPT, buildWikiUpdatePrompt, buildFichesSummary, parseIngestOutput,
   appendIngestSection, addSourceToFiche, suggestionToAlert,
-  removeIngestSection, emptyIntegrationRecord,
+  removeIngestSection, emptyIntegrationRecord, hashContent,
   WIKI_CATEGORIES, type WikiCategory, type Fiche, type Alert, type Suggestion,
   type IntegrationRecord
 } from '@shared/wiki'
@@ -138,6 +138,7 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
   const raw = await runEngine(WIKI_SYSTEM_PROMPT, user)
   const { suggestions, summary } = parseIngestOutput(raw)
   const day = today()
+  const chHash = hashContent(chapterText)
 
   const mode = useUIStore.getState().analysisMode
 
@@ -151,14 +152,14 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
     await appendLog(projectPath, 'analyse', item.title, `${queued.length} suggestion(s) en attente`)
     // Mark integrated so the batch does not re-analyze (and re-queue) an already-analyzed
     // chapter; the queued suggestions await review. Re-analysis ("tout reanalyser") is a later slice.
-    await recordIntegration(projectPath, chapterId, emptyIntegrationRecord(day))
+    await recordIntegration(projectPath, chapterId, { ...emptyIntegrationRecord(day), chapterHash: chHash })
     return { fichesCreated: 0, fichesUpdated: 0, alerts: 0, ignored: 0, queued: queued.length, summary }
   }
 
   // Basic mode: auto-apply, new fiches first so same-run "ajout" can target them.
   let working: Fiche[] = [...currentFiches]
   let fichesCreated = 0, fichesUpdated = 0, alertCount = 0, ignored = 0
-  const record = emptyIntegrationRecord(day)
+  const record = { ...emptyIntegrationRecord(day), chapterHash: chHash }
   const ordered = [
     ...suggestions.filter(s => s.type === 'nouvelle_fiche'),
     ...suggestions.filter(s => s.type === 'ajout'),
