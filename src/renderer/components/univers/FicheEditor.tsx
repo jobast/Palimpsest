@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { Eye, Pencil } from 'lucide-react'
 import { useWikiStore } from '@/stores/wikiStore'
 import { FicheStructuredFields } from './FicheStructuredFields'
+import { FicheBody } from './FicheBody'
 import { backlinks, ficheKey, type Fiche } from '@shared/wiki'
 
 export function FicheEditor() {
@@ -12,6 +14,7 @@ export function FicheEditor() {
   // Latest draft, so the unmount/switch cleanup can flush a pending save.
   const latest = useRef<Fiche | null>(draft)
   latest.current = draft
+  const [editing, setEditing] = useState(false)
 
   // Reload the draft when the active fiche changes.
   useEffect(() => { setDraft(fiche) /* eslint-disable-next-line */ }, [key])
@@ -45,16 +48,31 @@ export function FicheEditor() {
           onChange={e => scheduleSave({ ...draft, title: e.target.value })}
         />
         <span className="text-xs uppercase tracking-wide text-muted-foreground">{draft.category}</span>
+        <button
+          onClick={() => setEditing(e => !e)}
+          className="p-1 rounded hover:bg-accent text-muted-foreground"
+          title={editing ? 'Aperçu' : 'Éditer'}
+        >
+          {editing ? <Eye size={15} /> : <Pencil size={15} />}
+        </button>
       </div>
 
       <FicheStructuredFields fiche={draft} onChange={meta => scheduleSave({ ...draft, meta })} />
 
-      <textarea
-        className="flex-1 w-full resize-none bg-background text-foreground p-4 focus:outline-none font-serif leading-relaxed min-h-[12rem]"
-        placeholder="Contenu de la fiche (markdown)…"
-        value={draft.body}
-        onChange={e => scheduleSave({ ...draft, body: e.target.value })}
-      />
+      {editing ? (
+        <textarea
+          className="flex-1 w-full resize-none bg-background text-foreground p-4 focus:outline-none font-serif leading-relaxed min-h-[12rem]"
+          placeholder="Contenu de la fiche (markdown)…"
+          value={draft.body}
+          onChange={e => scheduleSave({ ...draft, body: e.target.value })}
+        />
+      ) : (
+        <div className="flex-1 overflow-auto p-4 min-h-[12rem]">
+          {draft.body.trim()
+            ? <FicheBody body={draft.body} fiches={fiches} onNavigate={setActiveFiche} />
+            : <div className="text-muted-foreground text-sm">Fiche vide. Clique sur ✎ pour éditer.</div>}
+        </div>
+      )}
 
       {back.length > 0 && (
         <div className="px-4 py-2 border-t border-border text-xs">
