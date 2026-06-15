@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useWikiStore } from '@/stores/wikiStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useStatsStore } from '@/stores/statsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { groupFichesByCategory, ficheKey, WIKI_CATEGORIES, CLI_ENGINES, isCliEngine, type WikiCategory, type EngineId } from '@shared/wiki'
-import { Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Plus, Sparkles, Trash2, BookOpenCheck, Square } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { writeAgentDoc } from '@/lib/wiki/wikiIO'
 import { runEngine, detectEngines } from '@/lib/wiki/engine'
+import { analyzeManuscript, type BatchProgress } from '@/lib/wiki/ingest'
 
 const CATEGORY_LABELS: Record<WikiCategory, string> = {
   personnages: 'Personnages', lieux: 'Lieux', intrigues: 'Intrigues',
@@ -24,6 +25,25 @@ export function FicheNavigator() {
   const [adding, setAdding] = useState<WikiCategory | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [availableEngines, setAvailableEngines] = useState<string[]>([])
+  const [batch, setBatch] = useState<BatchProgress | null>(null)
+  const cancelRef = useRef(false)
+
+  const handleAnalyzeManuscript = async () => {
+    cancelRef.current = false
+    setBatch({ done: 0, total: 0, title: '' })
+    try {
+      const r = await analyzeManuscript(p => setBatch(p), () => !cancelRef.current)
+      const tail = r.cancelled ? ' (interrompu)' : ''
+      const fails = r.failures ? `, ${r.failures} échec(s)` : ''
+      showNotification(r.failures ? 'error' : 'success',
+        `Manuscrit analysé : ${r.chapters} chapitre(s), ${r.fichesCreated} fiche(s) créée(s), ${r.fichesUpdated} enrichie(s), ${r.alerts} alerte(s)${fails}${tail}.`)
+    } catch (e) {
+      showNotification('error', `Analyse KO : ${e instanceof Error ? e.message : 'erreur'}`)
+    } finally {
+      setBatch(null)
+    }
+  }
+
   const groups = groupFichesByCategory(fiches)
 
   useEffect(() => {
@@ -109,6 +129,36 @@ export function FicheNavigator() {
           </div>
         )
       })}
+      {batch ? (
+        <div className="mt-3 flex flex-col gap-1.5">
+          <div className="text-xs text-muted-foreground truncate">
+            Analyse… {batch.done}/{batch.total}{batch.title ? ` - ${batch.title}` : ''}
+          </div>
+          <div className="h-1 w-full rounded bg-accent overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: batch.total ? `${(batch.done / batch.total) * 100}%` : '0%' }}
+            />
+          </div>
+          <button
+            onClick={() => { cancelRef.current = true }}
+            className="w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+            title="Arrête après le chapitre en cours"
+          >
+            <Square size={12} />
+            Arrêter
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => { void handleAnalyzeManuscript() }}
+          className="mt-3 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+          title="Analyse tous les chapitres non encore intégrés dans l'Univers"
+        >
+          <BookOpenCheck size={13} />
+          Analyser le manuscrit
+        </button>
+      )}
       <button
         onClick={handlePrepareAgent}
         className="mt-3 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
