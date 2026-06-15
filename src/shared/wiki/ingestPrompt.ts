@@ -1,3 +1,6 @@
+import { parseSuggestionsBlock } from './suggestion.js'
+import type { Suggestion } from './types.js'
+
 export const WIKI_SYSTEM_PROMPT = `Tu es l'archiviste de la « bible du roman » (le wiki) d'un auteur. Le wiki est du matériel de RÉFÉRENCE (personnages, lieux, intrigues, notes), distinct de la prose du manuscrit. Ton rôle : à partir d'un extrait de chapitre, proposer des mises à jour de la bible sous forme de SUGGESTIONS, jamais de modifications directes. Tu réponds TOUJOURS en français.
 
 Charte : Palimpseste est un outil d'aide à l'écriture ; tu ne produis JAMAIS de prose de manuscrit, pas une phrase destinée à être insérée dans le livre. Tu ne fais qu'archiver des faits de référence proposés à l'auteur.
@@ -32,7 +35,12 @@ RESUME: <une ligne>
 CORPS:
 <contenu proposé, fondé sur le texte>
 
-Émets autant de blocs que nécessaire. Si tu n'as STRICTEMENT rien à proposer, écris exactement « AUCUNE SUGGESTION » et rien d'autre.`
+Émets autant de blocs que nécessaire. Si tu n'as STRICTEMENT rien à proposer pour la bible, écris « AUCUNE SUGGESTION » à la place des blocs.
+
+ENFIN, termine TOUJOURS ta réponse par cette ligne exacte, suivie d'un résumé succinct du chapitre (2 à 4 phrases, factuel, en français) :
+
+=== RESUME CHAPITRE ===
+<résumé du chapitre>`
 
 export interface WikiUpdatePromptInput {
   chapterTitle: string
@@ -73,4 +81,21 @@ ${input.pendingSummary}
 ${CONVENTIONS}
 
 ${FORMAT}`
+}
+
+/**
+ * Parse the full ingest output: suggestions + the trailing chapter summary.
+ * The "=== RESUME CHAPITRE ===" block is split off BEFORE parsing suggestions
+ * so it can never leak into the last suggestion body.
+ */
+export function parseIngestOutput(text: string): { suggestions: Suggestion[]; summary: string } {
+  const marker = /^[ \t]*===\s*RESUME CHAPITRE\s*===[ \t]*$/m
+  const m = marker.exec(text)
+  let suggestionsText = text
+  let summary = ''
+  if (m) {
+    suggestionsText = text.slice(0, m.index)
+    summary = text.slice(m.index + m[0].length).trim()
+  }
+  return { suggestions: parseSuggestionsBlock(suggestionsText), summary }
 }
