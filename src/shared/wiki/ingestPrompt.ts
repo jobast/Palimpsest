@@ -9,7 +9,8 @@ Tu bases chaque fait STRICTEMENT sur le texte fourni : tu n'inventes rien. Si tu
 
 export const GRILLE = `GRILLE DE LECTURE (suis-la systématiquement, dans cet ordre) :
 
-1. PERSONNAGES — Nouveaux personnages ? Pour chacun : traits PHYSIQUES, traits de CARACTÈRE, RELATIONS, ÉVOLUTION par rapport à ce qui est déjà consigné.
+0. SEUIL DE SIGNIFICATION (applique-le AVANT tout) : ne crée une fiche dédiée que pour une entité qui RÉCURRE ou porte l'intrigue (un personnage qui revient, un lieu où se déroule une scène, une intrigue active). Un personnage ou un lieu cité UNE SEULE FOIS, en passant, sans rôle narratif, est un FIGURANT : NE crée PAS de fiche pour lui (au plus, une mention d'une ligne dans la fiche de la scène/du personnage concerné). En cas de doute, NE crée PAS. Si un nom propre paraît important mais incertain, signale-le en incoherence plutôt que d'en faire une fiche.
+1. PERSONNAGES — Nouveaux personnages SIGNIFICATIFS ? Pour chacun : traits PHYSIQUES, traits de CARACTÈRE, RELATIONS, ÉVOLUTION par rapport à ce qui est déjà consigné.
 2. LIEUX — Nouveaux lieux ? Descriptions sensorielles, rôle narratif.
 3. INTRIGUES — Intrigues qui avancent, nouveaux mystères/questions, révélations.
 4. CONTRADICTIONS — Le chapitre contredit-il une fiche existante ? Émets une suggestion TYPE incoherence en citant « le chapitre dit… mais la fiche dit… ». Ne tranche pas : signale.
