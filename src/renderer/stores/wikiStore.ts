@@ -1,15 +1,17 @@
 import { create } from 'zustand'
-import { type Fiche, type WikiCategory, ficheKey } from '@shared/wiki'
-import { loadFiches, saveFiche as ioSaveFiche, deleteFiche as ioDeleteFiche, createFiche as ioCreateFiche } from '@/lib/wiki/wikiIO'
+import { type Fiche, type WikiCategory, type Suggestion, ficheKey } from '@shared/wiki'
+import { loadFiches, loadSuggestions, saveFiche as ioSaveFiche, deleteFiche as ioDeleteFiche, createFiche as ioCreateFiche } from '@/lib/wiki/wikiIO'
 import { useProjectStore } from './projectStore'
 
 interface WikiState {
   fiches: Fiche[]
+  suggestions: Suggestion[]
   activeFicheKey: string | null
   loadedPath: string | null
   isLoading: boolean
 
   loadWiki: (projectPath: string) => Promise<void>
+  refreshSuggestions: () => Promise<void>
   ensureLoaded: () => Promise<void>
   setActiveFiche: (key: string | null) => void
   getActiveFiche: () => Fiche | null
@@ -20,14 +22,22 @@ interface WikiState {
 
 export const useWikiStore = create<WikiState>((set, get) => ({
   fiches: [],
+  suggestions: [],
   activeFicheKey: null,
   loadedPath: null,
   isLoading: false,
 
   loadWiki: async (projectPath) => {
     set({ isLoading: true })
-    const fiches = await loadFiches(projectPath)
-    set({ fiches, loadedPath: projectPath, isLoading: false })
+    const [fiches, suggestions] = await Promise.all([loadFiches(projectPath), loadSuggestions(projectPath)])
+    set({ fiches, suggestions, loadedPath: projectPath, isLoading: false })
+  },
+
+  refreshSuggestions: async () => {
+    const { projectPath } = useProjectStore.getState()
+    if (!projectPath) return
+    const suggestions = await loadSuggestions(projectPath)
+    set({ suggestions })
   },
 
   ensureLoaded: async () => {
