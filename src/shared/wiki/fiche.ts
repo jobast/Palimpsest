@@ -70,3 +70,22 @@ export function appendIngestSection(fiche: Fiche, chapterId: string, sectionBody
   const body = base ? `${base}\n\n${section}\n` : `${section}\n`
   return { ...fiche, body, lastUpdated: today }
 }
+
+/** Inverse of appendIngestSection: drop every section tagged `<!-- ingest:<chapterId> -->`. */
+export function removeIngestSection(body: string, chapterId: string): string {
+  const marker = `<!-- ingest:${chapterId} -->`
+  const anyMarker = /^<!-- ingest:.* -->$/
+  const out: string[] = []
+  let skipping = false
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim()
+    if (anyMarker.test(trimmed)) {
+      skipping = trimmed === marker
+      if (skipping) continue        // drop our own marker line
+      // a different chapter's marker: stop skipping and keep it
+    }
+    if (skipping) continue
+    out.push(line)
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}

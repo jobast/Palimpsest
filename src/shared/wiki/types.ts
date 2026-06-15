@@ -27,6 +27,14 @@ export interface Suggestion {
   sourceChapitre?: string
 }
 
+export interface FicheRef { category: WikiCategory; slug: string }
+export interface IntegrationRecord {
+  at: string
+  created: FicheRef[]
+  appended: FicheRef[]
+  alerts: string[]
+}
+
 export type AlertType = 'contradiction' | 'nom_manquant' | 'decision' | 'autre'
 export type AlertStatus = 'ouverte' | 'resolue'
 export interface Alert {
