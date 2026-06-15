@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useProjectStore } from '@/stores/projectStore'
@@ -24,14 +25,35 @@ import {
   Settings,
   Asterisk,
   Sun,
-  Moon
+  Moon,
+  Sparkles,
+  Loader2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ingestChapter } from '@/lib/wiki/ingest'
 
 export function Toolbar() {
   const { editor } = useEditorStore()
   const { toggleSidebar, sidebarOpen, toggleFocusMode, statsSidebarOpen, toggleStatsSidebar, openSettings, theme, setTheme } = useUIStore()
   const { saveProject, isDirty } = useProjectStore()
+  const activeDocumentId = useProjectStore(s => s.activeDocumentId)
+  const showNotification = useStatsStore(s => s.showNotification)
+  const [analyzing, setAnalyzing] = useState(false)
+
+  const handleAnalyzeChapter = async () => {
+    if (!activeDocumentId) { showNotification('error', 'Ouvre un chapitre à analyser'); return }
+    setAnalyzing(true)
+    try {
+      const r = await ingestChapter(activeDocumentId)
+      const extra = r.ignored ? `, ${r.ignored} ignorée(s)` : ''
+      showNotification('success',
+        `Univers mis à jour : ${r.fichesCreated} fiche(s) créée(s), ${r.fichesUpdated} enrichie(s), ${r.alerts} alerte(s)${extra}.`)
+    } catch (e) {
+      showNotification('error', `Analyse KO : ${e instanceof Error ? e.message : 'erreur'}`)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
 
   if (!editor) {
     return (
@@ -54,6 +76,16 @@ export function Toolbar() {
         onClick={saveProject}
         title="Enregistrer (⌘S)"
         className={isDirty ? 'text-primary' : ''}
+      />
+
+      <ToolbarSeparator />
+
+      {/* Analyse du chapitre vers l'Univers */}
+      <ToolbarButton
+        icon={analyzing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+        onClick={() => { void handleAnalyzeChapter() }}
+        disabled={analyzing}
+        title="Analyser ce chapitre dans l'Univers"
       />
 
       <ToolbarSeparator />
