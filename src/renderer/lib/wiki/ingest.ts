@@ -37,10 +37,13 @@ function findItem(items: ManuscriptItem[], id: string): ManuscriptItem | null {
   return null
 }
 
-/** Chapter text as plain markdown (flush the live editor first so we read latest). */
-function getChapterText(chapterId: string): string {
+/** Read a chapter's text as plain markdown. Only the active document can hold unflushed
+ *  editor edits, so we flush just that one before reading from the store. */
+function readChapterText(chapterId: string): string {
   const editor = useEditorStore.getState()
-  editor.flushCurrentDocument(useProjectStore.getState().activeDocumentId)
+  if (useProjectStore.getState().activeDocumentId === chapterId) {
+    editor.flushCurrentDocument(chapterId)
+  }
   const raw = editor.getDocumentContent(chapterId)
   if (!raw) return ''
   try {
@@ -50,14 +53,19 @@ function getChapterText(chapterId: string): string {
   }
 }
 
-/** Resolve an "ajout" target by "categorie/slug" then by title (case-insensitive). */
+/** Resolve an "ajout" target: prefer "categorie/slug"; else an unambiguous title match
+ *  (constrained to the cible's category when one is given) to avoid cross-category collisions. */
 function findFicheByCible(fiches: Fiche[], cible: string, title: string): Fiche | null {
+  const wanted = title.trim().toLowerCase()
   if (cible.includes('/')) {
     const [cat, slug] = cible.split('/')
-    const hit = fiches.find(f => f.category === cat && f.slug === slug)
-    if (hit) return hit
+    const bySlug = fiches.find(f => f.category === cat && f.slug === slug)
+    if (bySlug) return bySlug
+    const inCat = fiches.filter(f => f.category === cat && f.title.trim().toLowerCase() === wanted)
+    return inCat.length === 1 ? inCat[0] : null
   }
-  return fiches.find(f => f.title.toLowerCase() === title.toLowerCase()) ?? null
+  const byTitle = fiches.filter(f => f.title.trim().toLowerCase() === wanted)
+  return byTitle.length === 1 ? byTitle[0] : null
 }
 
 /**
@@ -65,13 +73,14 @@ function findFicheByCible(fiches: Fiche[], cible: string, title: string): Fiche 
  * nouvelle_fiche -> create ; ajout -> append marked section + source ; incoherence -> alert.
  * Also writes a chapter summary into the chapter synopsis. Returns counts.
  */
+// Not re-entrant: callers must prevent concurrent runs on the same chapter (the toolbar button disables while running).
 export async function ingestChapter(chapterId: string): Promise<IngestResult> {
   const projectPath = useProjectStore.getState().projectPath
   const project = useProjectStore.getState().project
   if (!projectPath || !project) throw new Error('Aucun projet ouvert')
   const item = findItem(project.manuscript.items, chapterId)
   if (!item) throw new Error('Chapitre introuvable')
-  const chapterText = getChapterText(chapterId)
+  const chapterText = readChapterText(chapterId)
   if (!chapterText.trim()) throw new Error('Chapitre vide')
 
   await useWikiStore.getState().ensureLoaded()
