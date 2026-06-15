@@ -36,8 +36,9 @@ avec un **journal annulable**.
    (suggestions/alertes en cours, anti-doublon), mystères ouverts. (`ingestPrompt` fournit
    déjà `buildWikiUpdatePrompt` ; on étend la consigne pour exiger AUSSI un **résumé** du
    chapitre.)
-3. **Appel IA** : `ai:chat` (system = `WIKI_SYSTEM_PROMPT`, user = prompt) via le client des
-   réglages (model-agnostic).
+3. **Appel IA** : via le **moteur sélectionné** (voir « Moteur d'analyse ») — soit `ai:chat`
+   (API, clés), soit un **CLI d'abonnement** (`claude`/`codex`/`gemini`). Même entrée
+   (system = `WIKI_SYSTEM_PROMPT`, user = prompt), même sortie texte à parser. Model-agnostic.
 4. **Parsing** : `parseSuggestionsBlock` → suggestions (nouvelle_fiche / ajout / incoherence)
    + extraction du bloc **`=== RESUME ===`** (le résumé succinct).
 5. **Sortie** : `{ suggestions, summary }`.
@@ -45,6 +46,35 @@ avec un **journal annulable**.
 Unité pure testable : `parseIngestOutput(text) -> { suggestions, summary }` (réutilise
 `parseSuggestionsBlock` + extrait le résumé). Le prompt gagne une section « RESUME » dans son
 format de sortie.
+
+## Moteur d'analyse (API ou abonnement via CLI)
+
+L'appel au modèle passe par un **moteur** pluggable, derrière une interface commune
+`runEngine(system, user) -> Promise<string>`. Deux familles :
+
+- **API** (existant) : `ai:chat` via le client des réglages (claude/openai/ollama + clés).
+  Coût par token. Adapté aux appels ponctuels.
+- **Abonnement via CLI** (nouveau) : lance un outil local déjà connecté à l'abonnement de
+  l'utilisateur, depuis le **process principal** (`child_process.spawn`, **args en tableau,
+  pas de shell** → zéro injection), prompt passé en argument ou via stdin, sortie = stdout.
+  Registre (calqué sur le Qt `CLI_ENGINES`) :
+  | id | binaire | invocation | abonnement |
+  |---|---|---|---|
+  | `claude` | `claude` | `claude -p <prompt>` | Claude (Max/Pro) |
+  | `codex` | `codex` | `codex exec <prompt>` | ChatGPT |
+  | `gemini` | `gemini` | `gemini -p <prompt>` | Google |
+  → **pas de facture API** (juste le forfait + ses limites). Idéal pour le gros batch (cas
+  Savana, qui marchait précisément ainsi via Claude Code).
+
+**Détection & sélection** : le main expose `wiki:detectEngines` (teste la présence des
+binaires, ex. `which claude`) ; les réglages affichent les moteurs disponibles et l'auteur
+**choisit le moteur d'analyse** (API provider X, ou CLI claude/codex/gemini). Si un CLI est
+choisi mais absent/non connecté → message clair (« installe et connecte `claude` », etc.).
+
+**IPC** : `wiki:runEngine({ engineId, system, user }) -> { ok, text?, error? }` côté main
+(spawn API n/a — l'API reste côté renderer via `ai:chat` ; le CLI est forcément côté main).
+En pratique, `runEngine` côté renderer route : API → `ai:chat` (renderer) ; CLI →
+`window.electronAPI.runWikiEngine(...)` (main spawn).
 
 ## Application (selon le mode)
 
@@ -99,9 +129,16 @@ est moins nécessaire mais reste dispo.)
 - **Pur (testable `node:test`)** :
   - étendre `ingestPrompt.ts` : ajouter au format de sortie un bloc `=== RESUME ===` ;
     `parseIngestOutput(text) -> { suggestions: Suggestion[]; summary: string }`.
+- **Main** :
+  - IPC `wiki:detectEngines` → liste des CLI disponibles (test de présence des binaires).
+  - IPC `wiki:runEngine({ engineId, prompt }) -> { ok, text?, error? }` → `child_process.spawn`
+    du CLI (args en tableau, pas de shell), prompt via arg/stdin, renvoie stdout. Timeout + nettoyage.
+  - Preload : `detectWikiEngines()`, `runWikiEngine(payload)`. Types dans `electron.d.ts`.
 - **Renderer** :
+  - `src/renderer/lib/wiki/engine.ts` : interface `runEngine(system, user): Promise<string>`
+    + sélection (réglage `engineId`) ; route API → `ai:chat` ; CLI → `runWikiEngine`.
   - `src/renderer/lib/wiki/ingest.ts` : `ingestChapter(chapterId, mode)` (texte → prompt →
-    `ai:chat` → parse → applique/queue + résumé + log), `analyzeManuscript(mode, onProgress)`,
+    `runEngine` → parse → applique/queue + résumé + log), `analyzeManuscript(mode, onProgress)`,
     `undoChapterIntegration(chapterId)`, `applySuggestion(suggestion)` (création/append/alerte).
     Utilise `wikiIO`, `wikiStore`, le client IA (`createAIClientFromStore`), et le
     `projectStore`/`editorStore` pour le texte + le synopsis.
