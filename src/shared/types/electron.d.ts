@@ -127,6 +127,10 @@ export interface ElectronAPI {
   // Wiki subscription CLI engines
   detectWikiEngines: () => Promise<{ available: string[] }>
   runWikiEngine: (payload: { engineId: string; prompt: string }) => Promise<{ ok: boolean; text?: string; error?: string }>
+  runWikiAgent: (payload: { projectPath: string; task: string; manualPath: string; maxTurns?: number }) => Promise<{ ok: boolean; summary?: string; error?: string }>
+  cancelWikiAgent: () => Promise<{ ok: boolean }>
+  onWikiAgentProgress: (callback: (evt: { kind: string; label: string }) => void) => void
+  offWikiAgentProgress: () => void
 }
 
 declare global {

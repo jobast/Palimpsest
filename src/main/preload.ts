@@ -110,5 +110,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Wiki subscription CLI engines
   detectWikiEngines: () => ipcRenderer.invoke('wiki:detectEngines'),
-  runWikiEngine: (payload: { engineId: string; prompt: string }) => ipcRenderer.invoke('wiki:runEngine', payload)
+  runWikiEngine: (payload: { engineId: string; prompt: string }) => ipcRenderer.invoke('wiki:runEngine', payload),
+  runWikiAgent: (payload: { projectPath: string; task: string; manualPath: string; maxTurns?: number }) =>
+    ipcRenderer.invoke('wiki:runAgent', payload),
+  cancelWikiAgent: () => ipcRenderer.invoke('wiki:cancelAgent'),
+  onWikiAgentProgress: (callback: (evt: { kind: string; label: string }) => void) =>
+    ipcRenderer.on('wiki:agentProgress', (_, evt) => callback(evt)),
+  offWikiAgentProgress: () => ipcRenderer.removeAllListeners('wiki:agentProgress')
 })
