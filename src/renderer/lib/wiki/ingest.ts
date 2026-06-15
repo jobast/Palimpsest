@@ -4,8 +4,9 @@ import { useWikiStore } from '@/stores/wikiStore'
 import { runEngine } from '@/lib/wiki/engine'
 import {
   createFiche as ioCreateFiche, saveFiche as ioSaveFiche, saveAlert,
-  appendLog, markChapterIntegrated, writeWikiIndex, loadAlerts, loadSuggestions
+  appendLog, markChapterIntegrated, writeWikiIndex, loadAlerts, loadSuggestions, loadIntegrations
 } from '@/lib/wiki/wikiIO'
+import { chaptersToAnalyze } from '@shared/manuscript/order'
 import { docToMarkdownBody } from '@shared/markdown'
 import {
   WIKI_SYSTEM_PROMPT, buildWikiUpdatePrompt, buildFichesSummary, parseIngestOutput,
@@ -143,4 +144,54 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
   await useWikiStore.getState().loadWiki(projectPath)
 
   return { fichesCreated, fichesUpdated, alerts: alertCount, ignored, summary }
+}
+
+export interface BatchProgress { done: number; total: number; title: string }
+export interface BatchResult {
+  chapters: number
+  fichesCreated: number
+  fichesUpdated: number
+  alerts: number
+  failures: number
+  cancelled: boolean
+}
+
+/**
+ * Analyze every not-yet-integrated chapter, sequentially, in basic mode.
+ * Reports progress before and after each chapter; checks shouldContinue()
+ * before each chapter to allow a clean stop. A chapter that throws is counted
+ * as a failure and skipped (it stays non-integrated, re-runnable). Returns aggregate counts.
+ */
+export async function analyzeManuscript(
+  onProgress: (p: BatchProgress) => void,
+  shouldContinue: () => boolean
+): Promise<BatchResult> {
+  const projectPath = useProjectStore.getState().projectPath
+  const project = useProjectStore.getState().project
+  if (!projectPath || !project) throw new Error('Aucun projet ouvert')
+
+  const integrated = await loadIntegrations(projectPath)
+  const ids = chaptersToAnalyze(project.manuscript.items, integrated)
+  const total = ids.length
+  let done = 0, fichesCreated = 0, fichesUpdated = 0, alerts = 0, failures = 0
+
+  for (const id of ids) {
+    if (!shouldContinue()) {
+      return { chapters: done, fichesCreated, fichesUpdated, alerts, failures, cancelled: true }
+    }
+    const title = findItem(project.manuscript.items, id)?.title ?? id
+    onProgress({ done, total, title })
+    try {
+      const r = await ingestChapter(id)
+      fichesCreated += r.fichesCreated
+      fichesUpdated += r.fichesUpdated
+      alerts += r.alerts
+    } catch {
+      failures += 1
+    }
+    done += 1
+    onProgress({ done, total, title })
+  }
+
+  return { chapters: done, fichesCreated, fichesUpdated, alerts, failures, cancelled: false }
 }
