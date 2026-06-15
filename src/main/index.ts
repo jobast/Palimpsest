@@ -862,7 +862,7 @@ function summarizeAgentEvent(evt: { type?: string; subtype?: string; message?: {
   if (evt.type === 'result') return { kind: 'result', label: 'Analyse terminée' }
   if (evt.type === 'assistant' && Array.isArray(evt.message?.content)) {
     for (const c of evt.message!.content!) {
-      if (c.type === 'tool_use') return { kind: 'tool', label: `${c.name ?? 'outil'}` }
+      if (c.type === 'tool_use') return { kind: 'tool', label: c.name ?? 'outil' }
       if (c.type === 'text' && c.text && c.text.trim()) return { kind: 'text', label: c.text.trim().slice(0, 100) }
     }
   }
@@ -874,17 +874,22 @@ let agentChild: ReturnType<typeof spawn> | null = null
 // Run Claude Code headless in the project dir: it edits wiki/ autonomously following the manual.
 // Streams progress to the renderer; uses the user's subscription (no API key). Returns a summary.
 ipcMain.handle('wiki:runAgent', async (_, payload: { projectPath: string; task: string; manualPath: string; maxTurns?: number }) => {
+  if (agentChild) return { ok: false, error: 'Analyse déjà en cours' }  // one agent at a time (it edits files)
   const args = ['-p', payload.task,
     '--permission-mode', 'acceptEdits',
     '--append-system-prompt-file', payload.manualPath,
     '--output-format', 'stream-json', '--verbose',
     '--max-turns', String(payload.maxTurns ?? 60)]
+  // Force the user's subscription (not API/cloud billing): drop every auth/routing override.
   const env = { ...process.env }
-  delete env.ANTHROPIC_API_KEY   // force subscription auth (not API billing)
+  for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL',
+    'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY']) delete env[k]
   return await new Promise<{ ok: boolean; summary?: string; error?: string }>((resolve) => {
     const child = spawn('claude', args, { cwd: payload.projectPath, env, timeout: 1800000 })  // 30 min cap
     agentChild = child
     let buf = '', errOut = '', summary = ''
+    child.stdout.on('error', () => {})
+    child.stderr.on('error', () => {})
     child.stdout.on('data', d => {
       buf += d.toString()
       let nl: number
@@ -894,11 +899,12 @@ ipcMain.handle('wiki:runAgent', async (_, payload: { projectPath: string; task: 
         try {
           const evt = JSON.parse(line)
           if (evt.type === 'result' && typeof evt.result === 'string') summary = evt.result
-          mainWindow?.webContents.send('wiki:agentProgress', summarizeAgentEvent(evt))
+          const p = summarizeAgentEvent(evt)
+          if (p.label) mainWindow?.webContents.send('wiki:agentProgress', p)  // skip empty-label noise
         } catch { /* ignore partial / non-JSON lines */ }
       }
     })
-    child.stderr.on('data', d => { errOut += d.toString() })
+    child.stderr.on('data', d => { errOut = (errOut + d.toString()).slice(-4000) })
     child.on('error', (e) => { agentChild = null; resolve({ ok: false, error: String(e) }) })
     child.on('close', (code, signal) => {
       agentChild = null
