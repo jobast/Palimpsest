@@ -4,6 +4,7 @@ import type { EngineId } from '@shared/wiki'
 
 type SidebarPanel = 'project' | 'sheets' | 'analysis' | 'pages'
 type PaperColor = 'white' | 'cream' | 'sepia'
+export type AnalysisMode = 'basique' | 'avance'
 
 interface UIState {
   sidebarOpen: boolean
@@ -32,6 +33,9 @@ interface UIState {
   // Analysis engine ('api' or a CLI engine id)
   analysisEngine: EngineId
 
+  // Analysis mode ('basique' applies directly, 'avance' creates suggestions)
+  analysisMode: AnalysisMode
+
   // Actions
   toggleSidebar: () => void
   setSidebarPanel: (panel: SidebarPanel) => void
@@ -52,6 +56,7 @@ interface UIState {
   setIsExportingPdf: (value: boolean) => void
   setActiveSection: (activeSection: 'ecriture' | 'univers') => void
   setAnalysisEngine: (id: EngineId) => void
+  setAnalysisMode: (m: AnalysisMode) => void
 }
 
 // Apply theme to document
@@ -102,6 +107,9 @@ export const useUIStore = create<UIState>()(
       // Analysis engine (default: API)
       analysisEngine: 'api',
 
+      // Analysis mode (default: basique)
+      analysisMode: 'basique',
+
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
       setSidebarPanel: (panel) => set({ sidebarPanel: panel, sidebarOpen: true }),
@@ -139,7 +147,8 @@ export const useUIStore = create<UIState>()(
       resetZoom: () => set({ zoomLevel: 100 }),
       setIsExportingPdf: (value) => set({ isExportingPdf: value }),
       setActiveSection: (activeSection) => set({ activeSection }),
-      setAnalysisEngine: (id) => set({ analysisEngine: id })
+      setAnalysisEngine: (id) => set({ analysisEngine: id }),
+      setAnalysisMode: (m) => set({ analysisMode: m })
     }),
     {
       name: 'palimpseste-ui-settings',
@@ -150,7 +159,8 @@ export const useUIStore = create<UIState>()(
         autoSaveInterval: state.autoSaveInterval,
         zoomLevel: state.zoomLevel,
         activeSection: state.activeSection,
-        analysisEngine: state.analysisEngine
+        analysisEngine: state.analysisEngine,
+        analysisMode: state.analysisMode
       }),
       onRehydrateStorage: () => (state) => {
         // Apply saved settings on app start

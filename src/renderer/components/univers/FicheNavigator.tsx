@@ -22,6 +22,8 @@ export function FicheNavigator() {
   const showNotification = useStatsStore(s => s.showNotification)
   const analysisEngine = useUIStore(s => s.analysisEngine)
   const setAnalysisEngine = useUIStore(s => s.setAnalysisEngine)
+  const analysisMode = useUIStore(s => s.analysisMode)
+  const setAnalysisMode = useUIStore(s => s.setAnalysisMode)
   const [adding, setAdding] = useState<WikiCategory | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [availableEngines, setAvailableEngines] = useState<string[]>([])
@@ -168,6 +170,15 @@ export function FicheNavigator() {
         Préparer l'analyse approfondie
       </button>
       <div className="mt-2 flex flex-col gap-1.5">
+        <select
+          value={analysisMode}
+          onChange={e => setAnalysisMode(e.target.value as 'basique' | 'avance')}
+          className="w-full text-xs bg-background border border-border rounded px-1.5 py-1 text-muted-foreground"
+          title="Basique : applique direct. Avancé : dépose des suggestions à valider."
+        >
+          <option value="basique">Mode basique (auto)</option>
+          <option value="avance">Mode avancé (revue)</option>
+        </select>
         <select
           value={analysisEngine}
           onChange={e => setAnalysisEngine(e.target.value as EngineId)}
