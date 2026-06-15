@@ -106,5 +106,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     temperature?: number
     systemPrompt?: string
     ollamaConfig?: { endpoint: string; model: string }
-  }) => ipcRenderer.invoke('ai:chat', request)
+  }) => ipcRenderer.invoke('ai:chat', request),
+
+  // Wiki subscription CLI engines
+  detectWikiEngines: () => ipcRenderer.invoke('wiki:detectEngines'),
+  runWikiEngine: (payload: { engineId: string; prompt: string }) => ipcRenderer.invoke('wiki:runEngine', payload)
 })

@@ -124,6 +124,9 @@ export interface ElectronAPI {
   aiSetApiKey: (provider: 'claude' | 'openai', key: string) => Promise<{ success: boolean }>
   aiClearApiKey: (provider: 'claude' | 'openai') => Promise<{ success: boolean }>
   aiChat: (request: AIChatRequest) => Promise<AIChatResponse>
+  // Wiki subscription CLI engines
+  detectWikiEngines: () => Promise<{ available: string[] }>
+  runWikiEngine: (payload: { engineId: string; prompt: string }) => Promise<{ ok: boolean; text?: string; error?: string }>
 }
 
 declare global {

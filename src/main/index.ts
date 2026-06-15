@@ -1,7 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, nativeImage, session, Menu, safeStorage } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
+import { CLI_ENGINES, engineCommand } from '../shared/wiki/engines.js'
 import { createApplicationMenu } from './menu'
 import {
   assertProjectRootPath,
@@ -820,4 +822,34 @@ ipcMain.handle('ai:chat', async (_event, request: AIChatRequest) => {
   }
 
   return chatOpenAI(request, apiKey)
+})
+
+// Detect which subscription CLIs are installed (resolve via spawning `--version`).
+ipcMain.handle('wiki:detectEngines', async () => {
+  const available: string[] = []
+  await Promise.all(CLI_ENGINES.map(e => new Promise<void>((resolve) => {
+    const child = spawn(e.bin, ['--version'])
+    child.on('error', () => resolve())          // not installed
+    child.on('close', (code) => { if (code === 0) available.push(e.id); resolve() })
+  })))
+  return { available }
+})
+
+// Run a CLI engine: prompt via stdin (no shell, no ARG_MAX limit). Returns stdout.
+ipcMain.handle('wiki:runEngine', async (_, payload: { engineId: string; prompt: string }) => {
+  const cmd = engineCommand(payload.engineId)
+  if (!cmd) return { ok: false, error: `Moteur inconnu: ${payload.engineId}` }
+  return await new Promise<{ ok: boolean; text?: string; error?: string }>((resolve) => {
+    const child = spawn(cmd.bin, cmd.args, { timeout: 300000 })  // 5 min cap
+    let out = '', err = ''
+    child.stdout.on('data', d => { out += d.toString() })
+    child.stderr.on('data', d => { err += d.toString() })
+    child.on('error', (e) => resolve({ ok: false, error: String(e) }))
+    child.on('close', (code) => {
+      if (code === 0) resolve({ ok: true, text: out })
+      else resolve({ ok: false, error: err || `Code ${code}` })
+    })
+    child.stdin.write(payload.prompt)
+    child.stdin.end()
+  })
 })
