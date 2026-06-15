@@ -58,3 +58,15 @@ export function addSourceToFiche(fiche: Fiche, chapterId: string, today: string)
   if (sources.includes(chapterId)) return fiche
   return { ...fiche, sources: [...sources, chapterId], lastUpdated: today }
 }
+
+/**
+ * Append a dated section to a fiche body, tagged with an invisible marker
+ * `<!-- ingest:<chapterId> -->` so a future "undo integration" can remove
+ * exactly this section. Refreshes lastUpdated.
+ */
+export function appendIngestSection(fiche: Fiche, chapterId: string, sectionBody: string, today: string): Fiche {
+  const section = `<!-- ingest:${chapterId} -->\n_(${today})_\n${sectionBody.trim()}`
+  const base = fiche.body.trim()
+  const body = base ? `${base}\n\n${section}\n` : `${section}\n`
+  return { ...fiche, body, lastUpdated: today }
+}

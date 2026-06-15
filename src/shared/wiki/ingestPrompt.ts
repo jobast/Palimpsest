@@ -1,5 +1,5 @@
 import { parseSuggestionsBlock } from './suggestion.js'
-import type { Suggestion } from './types.js'
+import { WIKI_CATEGORIES, type Suggestion, type Fiche } from './types.js'
 
 export const WIKI_SYSTEM_PROMPT = `Tu es l'archiviste de la « bible du roman » (le wiki) d'un auteur. Le wiki est du matériel de RÉFÉRENCE (personnages, lieux, intrigues, notes), distinct de la prose du manuscrit. Ton rôle : à partir d'un extrait de chapitre, proposer des mises à jour de la bible sous forme de SUGGESTIONS, jamais de modifications directes. Tu réponds TOUJOURS en français.
 
@@ -81,6 +81,19 @@ ${input.pendingSummary}
 ${CONVENTIONS}
 
 ${FORMAT}`
+}
+
+/** Human-readable digest of existing fiches (titles grouped by category) for the prompt. */
+export function buildFichesSummary(fiches: Fiche[]): string {
+  if (!fiches.length) return 'Aucune fiche pour l\'instant (la bible est vide).'
+  let out = ''
+  for (const category of WIKI_CATEGORIES) {
+    const inCat = fiches.filter(f => f.category === category)
+    if (!inCat.length) continue
+    out += `## ${category}\n`
+    for (const f of inCat) out += `- ${f.title} (${category}/${f.slug})\n`
+  }
+  return out.trim()
 }
 
 /**
