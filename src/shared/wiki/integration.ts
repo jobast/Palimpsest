@@ -19,8 +19,25 @@ export function toIntegrationRecord(value: unknown): IntegrationRecord {
       at: typeof v.at === 'string' ? v.at : '',
       created: asRefs(v.created),
       appended: asRefs(v.appended),
-      alerts: Array.isArray(v.alerts) ? v.alerts.filter((x): x is string => typeof x === 'string') : []
+      alerts: Array.isArray(v.alerts) ? v.alerts.filter((x): x is string => typeof x === 'string') : [],
+      ...(typeof v.chapterHash === 'string' ? { chapterHash: v.chapterHash } : {})
     }
   }
   return { at: '', created: [], appended: [], alerts: [] }
+}
+
+export type ChapterStatus = 'never' | 'stale' | 'current'
+
+/** Deterministic content fingerprint (DJB2). Used to detect chapters changed since ingestion. */
+export function hashContent(text: string): string {
+  let h = 5381
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36)
+}
+
+/** Freshness of a chapter vs its integration record. Legacy records (no hash) count as current. */
+export function chapterStatus(currentHash: string, record: IntegrationRecord | undefined): ChapterStatus {
+  if (!record) return 'never'
+  if (!record.chapterHash) return 'current'
+  return record.chapterHash === currentHash ? 'current' : 'stale'
 }

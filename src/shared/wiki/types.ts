@@ -33,6 +33,7 @@ export interface IntegrationRecord {
   created: FicheRef[]
   appended: FicheRef[]
   alerts: string[]
+  chapterHash?: string
 }
 
 export type AlertType = 'contradiction' | 'nom_manquant' | 'decision' | 'autre'
