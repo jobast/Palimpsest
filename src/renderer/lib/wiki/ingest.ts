@@ -271,11 +271,14 @@ export async function undoChapterIntegration(chapterId: string): Promise<UndoRes
   const fiches = await loadFiches(projectPath)
   let deleted = 0, reverted = 0, alertsRemoved = 0
 
+  const deletedKeys = new Set<string>()
   for (const ref of rec.created) {
     const f = fiches.find(x => x.category === ref.category && x.slug === ref.slug)
-    if (f) { await ioDeleteFiche(projectPath, f); deleted += 1 }
+    if (f) { await ioDeleteFiche(projectPath, f); deleted += 1; deletedKeys.add(`${ref.category}/${ref.slug}`) }
   }
   for (const ref of rec.appended) {
+    // A fiche both created AND appended-to by this chapter was just deleted; do not resurrect it.
+    if (deletedKeys.has(`${ref.category}/${ref.slug}`)) continue
     const f = fiches.find(x => x.category === ref.category && x.slug === ref.slug)
     if (!f) continue
     const body = removeIngestSection(f.body, chapterId)
