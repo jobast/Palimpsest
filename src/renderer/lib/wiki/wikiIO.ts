@@ -3,7 +3,8 @@ import {
   parseSuggestion, serializeSuggestion, type Suggestion,
   parseAlert, serializeAlert, type Alert,
   formatLogEntry, prependLogEntry,
-  buildWikiAgentDoc
+  buildWikiAgentDoc,
+  toIntegrationRecord, type IntegrationRecord
 } from '@shared/wiki'
 import { slugify } from '@shared/markdown/filename'
 
@@ -102,6 +103,10 @@ export async function saveAlert(projectPath: string, alert: Alert): Promise<void
   await window.electronAPI.writeFile(`${projectPath}/wiki/${ALERT_DIR}/${alert.id}.md`, serializeAlert(alert))
 }
 
+export async function deleteAlert(projectPath: string, id: string): Promise<void> {
+  await window.electronAPI.deleteFile(`${projectPath}/wiki/${ALERT_DIR}/${id}.md`)
+}
+
 export async function appendLog(projectPath: string, action: string, subject: string, detail: string): Promise<void> {
   await ensureDir(`${projectPath}/wiki`)
   const path = `${projectPath}/wiki/log.md`
@@ -110,16 +115,57 @@ export async function appendLog(projectPath: string, action: string, subject: st
   await window.electronAPI.writeFile(path, prependLogEntry(current, formatLogEntry(action, subject, detail, today())))
 }
 
-export async function loadIntegrations(projectPath: string): Promise<Record<string, string>> {
+export async function loadIntegrations(projectPath: string): Promise<Record<string, IntegrationRecord>> {
   const r = await window.electronAPI.readFile(`${projectPath}/wiki/integrations.json`)
   if (!r.success || !r.content) return {}
-  try { return JSON.parse(r.content) as Record<string, string> } catch { return {} }
+  try {
+    const raw = JSON.parse(r.content) as Record<string, unknown>
+    const out: Record<string, IntegrationRecord> = {}
+    for (const [k, v] of Object.entries(raw)) out[k] = toIntegrationRecord(v)
+    return out
+  } catch {
+    return {}
+  }
+}
+
+async function writeIntegrations(projectPath: string, integrations: Record<string, IntegrationRecord>): Promise<void> {
+  await ensureDir(`${projectPath}/wiki`)
+  await window.electronAPI.writeFile(`${projectPath}/wiki/integrations.json`, JSON.stringify(integrations, null, 2))
+}
+
+/** Write (overwrite) a chapter's integration record. */
+export async function recordIntegration(projectPath: string, chapterId: string, record: IntegrationRecord): Promise<void> {
+  const integrations = await loadIntegrations(projectPath)
+  integrations[chapterId] = record
+  await writeIntegrations(projectPath, integrations)
+}
+
+/** Merge applied ops into a chapter's record (used when accepting a queued suggestion). */
+export async function mergeIntegration(
+  projectPath: string, chapterId: string,
+  partial: { created?: IntegrationRecord['created']; appended?: IntegrationRecord['appended']; alerts?: string[] }
+): Promise<void> {
+  const integrations = await loadIntegrations(projectPath)
+  const cur = integrations[chapterId] ?? { at: today(), created: [], appended: [], alerts: [] }
+  integrations[chapterId] = {
+    at: cur.at || today(),
+    created: [...cur.created, ...(partial.created ?? [])],
+    appended: [...cur.appended, ...(partial.appended ?? [])],
+    alerts: [...cur.alerts, ...(partial.alerts ?? [])]
+  }
+  await writeIntegrations(projectPath, integrations)
+}
+
+export async function removeIntegration(projectPath: string, chapterId: string): Promise<void> {
+  const integrations = await loadIntegrations(projectPath)
+  delete integrations[chapterId]
+  await writeIntegrations(projectPath, integrations)
 }
 
 export async function markChapterIntegrated(projectPath: string, chapterId: string): Promise<void> {
   await ensureDir(`${projectPath}/wiki`)
   const integrations = await loadIntegrations(projectPath)
-  integrations[chapterId] = new Date().toISOString()
+  integrations[chapterId] = { at: new Date().toISOString(), created: [], appended: [], alerts: [] }
   await window.electronAPI.writeFile(`${projectPath}/wiki/integrations.json`, JSON.stringify(integrations, null, 2))
 }
 

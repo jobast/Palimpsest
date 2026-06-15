@@ -20,7 +20,7 @@ export function flattenChapterIds(items: ManuscriptItem[]): string[] {
  * Ordered ids of CHAPTER items (type === 'chapter') not yet present in the
  * integrations map. Folders and scenes are skipped; children are traversed.
  */
-export function chaptersToAnalyze(items: ManuscriptItem[], integrated: Record<string, string>): string[] {
+export function chaptersToAnalyze(items: ManuscriptItem[], integrated: Record<string, unknown>): string[] {
   const ids: string[] = []
   const walk = (list: ManuscriptItem[]) => {
     for (const item of list) {
