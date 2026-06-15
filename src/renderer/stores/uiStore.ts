@@ -28,6 +28,9 @@ interface UIState {
   // Section
   activeSection: 'ecriture' | 'univers'
 
+  // Analysis engine ('api' or a CLI engine id)
+  analysisEngine: string
+
   // Actions
   toggleSidebar: () => void
   setSidebarPanel: (panel: SidebarPanel) => void
@@ -47,6 +50,7 @@ interface UIState {
   resetZoom: () => void
   setIsExportingPdf: (value: boolean) => void
   setActiveSection: (activeSection: 'ecriture' | 'univers') => void
+  setAnalysisEngine: (id: string) => void
 }
 
 // Apply theme to document
@@ -94,6 +98,9 @@ export const useUIStore = create<UIState>()(
       // Section
       activeSection: 'ecriture',
 
+      // Analysis engine (default: API)
+      analysisEngine: 'api',
+
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
       setSidebarPanel: (panel) => set({ sidebarPanel: panel, sidebarOpen: true }),
@@ -130,7 +137,8 @@ export const useUIStore = create<UIState>()(
       zoomOut: () => set((state) => ({ zoomLevel: Math.max(50, state.zoomLevel - 10) })),
       resetZoom: () => set({ zoomLevel: 100 }),
       setIsExportingPdf: (value) => set({ isExportingPdf: value }),
-      setActiveSection: (activeSection) => set({ activeSection })
+      setActiveSection: (activeSection) => set({ activeSection }),
+      setAnalysisEngine: (id) => set({ analysisEngine: id })
     }),
     {
       name: 'palimpseste-ui-settings',
@@ -140,7 +148,8 @@ export const useUIStore = create<UIState>()(
         autoSaveEnabled: state.autoSaveEnabled,
         autoSaveInterval: state.autoSaveInterval,
         zoomLevel: state.zoomLevel,
-        activeSection: state.activeSection
+        activeSection: state.activeSection,
+        analysisEngine: state.analysisEngine
       }),
       onRehydrateStorage: () => (state) => {
         // Apply saved settings on app start
