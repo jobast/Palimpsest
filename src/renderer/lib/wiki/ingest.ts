@@ -140,6 +140,8 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
       await useProjectStore.getState().saveProject()
     }
     await appendLog(projectPath, 'analyse', item.title, `${queued.length} suggestion(s) en attente`)
+    // Mark integrated so the batch does not re-analyze (and re-queue) an already-analyzed
+    // chapter; the queued suggestions await review. Re-analysis ("tout reanalyser") is a later slice.
     await markChapterIntegrated(projectPath, chapterId)
     return { fichesCreated: 0, fichesUpdated: 0, alerts: 0, ignored: 0, queued: queued.length, summary }
   }
