@@ -845,10 +845,12 @@ ipcMain.handle('wiki:runEngine', async (_, payload: { engineId: string; prompt: 
     child.stdout.on('data', d => { out += d.toString() })
     child.stderr.on('data', d => { err += d.toString() })
     child.on('error', (e) => resolve({ ok: false, error: String(e) }))
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       if (code === 0) resolve({ ok: true, text: out })
+      else if (signal) resolve({ ok: false, error: err || `Interrompu (${signal})` })
       else resolve({ ok: false, error: err || `Code ${code}` })
     })
+    child.stdin.on('error', () => {})  // ignore EPIPE if the CLI exits before reading stdin
     child.stdin.write(payload.prompt)
     child.stdin.end()
   })
