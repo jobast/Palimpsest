@@ -186,7 +186,8 @@ export async function analyzeManuscript(
       fichesCreated += r.fichesCreated
       fichesUpdated += r.fichesUpdated
       alerts += r.alerts
-    } catch {
+    } catch (e) {
+      console.warn(`Ingestion du chapitre ${id} (${title}) en echec:`, e)
       failures += 1
     }
     done += 1
