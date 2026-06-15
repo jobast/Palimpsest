@@ -1,17 +1,19 @@
 import { useProjectStore } from '@/stores/projectStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useWikiStore } from '@/stores/wikiStore'
+import { useUIStore } from '@/stores/uiStore'
 import { runEngine } from '@/lib/wiki/engine'
 import {
   createFiche as ioCreateFiche, saveFiche as ioSaveFiche, saveAlert,
-  appendLog, markChapterIntegrated, writeWikiIndex, loadAlerts, loadSuggestions, loadIntegrations
+  appendLog, markChapterIntegrated, writeWikiIndex, loadAlerts, loadSuggestions, loadIntegrations,
+  addSuggestions
 } from '@/lib/wiki/wikiIO'
 import { chaptersToAnalyze } from '@shared/manuscript/order'
 import { docToMarkdownBody } from '@shared/markdown'
 import {
   WIKI_SYSTEM_PROMPT, buildWikiUpdatePrompt, buildFichesSummary, parseIngestOutput,
   appendIngestSection, addSourceToFiche, suggestionToAlert,
-  WIKI_CATEGORIES, type WikiCategory, type Fiche, type Alert
+  WIKI_CATEGORIES, type WikiCategory, type Fiche, type Alert, type Suggestion
 } from '@shared/wiki'
 import type { ManuscriptItem } from '@shared/types/project'
 
@@ -20,6 +22,7 @@ export interface IngestResult {
   fichesUpdated: number
   alerts: number
   ignored: number
+  queued: number
   summary: string
 }
 
@@ -69,6 +72,31 @@ function findFicheByCible(fiches: Fiche[], cible: string, title: string): Fiche 
   return byTitle.length === 1 ? byTitle[0] : null
 }
 
+/** Apply ONE suggestion to disk (basic mode / accept). Returns the updated working list + a delta. */
+async function applyOneSuggestion(
+  projectPath: string, s: Suggestion, chapterId: string, working: Fiche[], day: string
+): Promise<{ working: Fiche[]; created: number; updated: number; alerts: number; ignored: number }> {
+  if (s.type === 'nouvelle_fiche') {
+    const cat: WikiCategory = (WIKI_CATEGORIES as string[]).includes(s.cible) ? (s.cible as WikiCategory) : 'notes'
+    const fiche = await ioCreateFiche(projectPath, cat, s.title, s.body, working)
+    return { working: [...working, fiche], created: 1, updated: 0, alerts: 0, ignored: 0 }
+  }
+  if (s.type === 'ajout') {
+    const target = findFicheByCible(working, s.cible, s.title)
+    if (!target) return { working, created: 0, updated: 0, alerts: 0, ignored: 1 }
+    let f = appendIngestSection(target, chapterId, s.body, day)
+    f = addSourceToFiche(f, chapterId, day)
+    await ioSaveFiche(projectPath, f)
+    return {
+      working: working.map(x => (x.category === f.category && x.slug === f.slug ? f : x)),
+      created: 0, updated: 1, alerts: 0, ignored: 0
+    }
+  }
+  const alert: Alert = { ...suggestionToAlert(s, day), id: crypto.randomUUID() }
+  await saveAlert(projectPath, alert)
+  return { working, created: 0, updated: 0, alerts: 1, ignored: 0 }
+}
+
 /**
  * Analyze one chapter and auto-apply the result to the Univers (basic mode):
  * nouvelle_fiche -> create ; ajout -> append marked section + source ; incoherence -> alert.
@@ -85,7 +113,7 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
   if (!chapterText.trim()) throw new Error('Chapitre vide')
 
   await useWikiStore.getState().ensureLoaded()
-  let working: Fiche[] = [...useWikiStore.getState().fiches]
+  const currentFiches: Fiche[] = [...useWikiStore.getState().fiches]
   const alerts = await loadAlerts(projectPath)
   const pending = await loadSuggestions(projectPath)
   const pendingSummary =
@@ -94,41 +122,43 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
   const user = buildWikiUpdatePrompt({
     chapterTitle: item.title,
     chapterText,
-    fichesSummary: buildFichesSummary(working),
+    fichesSummary: buildFichesSummary(currentFiches),
     pendingSummary
   })
 
   const raw = await runEngine(WIKI_SYSTEM_PROMPT, user)
   const { suggestions, summary } = parseIngestOutput(raw)
   const day = today()
+
+  const mode = useUIStore.getState().analysisMode
+
+  if (mode === 'avance') {
+    const queued = suggestions.map(s => ({ ...s, id: crypto.randomUUID(), sourceChapitre: chapterId }))
+    if (queued.length) await addSuggestions(projectPath, queued)
+    if (summary.trim()) {
+      useProjectStore.getState().updateManuscriptItem(chapterId, { synopsis: summary.trim() })
+      await useProjectStore.getState().saveProject()
+    }
+    await appendLog(projectPath, 'analyse', item.title, `${queued.length} suggestion(s) en attente`)
+    await markChapterIntegrated(projectPath, chapterId)
+    return { fichesCreated: 0, fichesUpdated: 0, alerts: 0, ignored: 0, queued: queued.length, summary }
+  }
+
+  // Basic mode: auto-apply, new fiches first so same-run "ajout" can target them.
+  let working: Fiche[] = [...currentFiches]
   let fichesCreated = 0, fichesUpdated = 0, alertCount = 0, ignored = 0
-
-  // 1. New fiches first (so same-run "ajout" can target them).
-  for (const s of suggestions.filter(x => x.type === 'nouvelle_fiche')) {
-    const cat: WikiCategory = (WIKI_CATEGORIES as string[]).includes(s.cible)
-      ? (s.cible as WikiCategory)
-      : 'notes'
-    const fiche = await ioCreateFiche(projectPath, cat, s.title, s.body, working)
-    working.push(fiche)
-    fichesCreated += 1
-  }
-
-  // 2. Additions to existing fiches.
-  for (const s of suggestions.filter(x => x.type === 'ajout')) {
-    const target = findFicheByCible(working, s.cible, s.title)
-    if (!target) { ignored += 1; continue }
-    let updated = appendIngestSection(target, chapterId, s.body, day)
-    updated = addSourceToFiche(updated, chapterId, day)
-    await ioSaveFiche(projectPath, updated)
-    working = working.map(f => (f.category === updated.category && f.slug === updated.slug ? updated : f))
-    fichesUpdated += 1
-  }
-
-  // 3. Contradictions -> open alerts.
-  for (const s of suggestions.filter(x => x.type === 'incoherence')) {
-    const alert: Alert = { ...suggestionToAlert(s, day), id: crypto.randomUUID() }
-    await saveAlert(projectPath, alert)
-    alertCount += 1
+  const ordered = [
+    ...suggestions.filter(s => s.type === 'nouvelle_fiche'),
+    ...suggestions.filter(s => s.type === 'ajout'),
+    ...suggestions.filter(s => s.type === 'incoherence')
+  ]
+  for (const s of ordered) {
+    const r = await applyOneSuggestion(projectPath, s, chapterId, working, day)
+    working = r.working
+    fichesCreated += r.created
+    fichesUpdated += r.updated
+    alertCount += r.alerts
+    ignored += r.ignored
   }
 
   // Chapter summary -> synopsis (visible in the manuscript).
@@ -143,7 +173,7 @@ export async function ingestChapter(chapterId: string): Promise<IngestResult> {
   await writeWikiIndex(projectPath, working)
   await useWikiStore.getState().loadWiki(projectPath)
 
-  return { fichesCreated, fichesUpdated, alerts: alertCount, ignored, summary }
+  return { fichesCreated, fichesUpdated, alerts: alertCount, ignored, queued: 0, summary }
 }
 
 export interface BatchProgress { done: number; total: number; title: string }
@@ -152,6 +182,7 @@ export interface BatchResult {
   fichesCreated: number
   fichesUpdated: number
   alerts: number
+  queued: number
   failures: number
   cancelled: boolean
 }
@@ -173,11 +204,11 @@ export async function analyzeManuscript(
   const integrated = await loadIntegrations(projectPath)
   const ids = chaptersToAnalyze(project.manuscript.items, integrated)
   const total = ids.length
-  let done = 0, fichesCreated = 0, fichesUpdated = 0, alerts = 0, failures = 0
+  let done = 0, fichesCreated = 0, fichesUpdated = 0, alerts = 0, queued = 0, failures = 0
 
   for (const id of ids) {
     if (!shouldContinue()) {
-      return { chapters: done, fichesCreated, fichesUpdated, alerts, failures, cancelled: true }
+      return { chapters: done, fichesCreated, fichesUpdated, alerts, queued, failures, cancelled: true }
     }
     const title = findItem(project.manuscript.items, id)?.title ?? id
     onProgress({ done, total, title })
@@ -186,6 +217,7 @@ export async function analyzeManuscript(
       fichesCreated += r.fichesCreated
       fichesUpdated += r.fichesUpdated
       alerts += r.alerts
+      queued += r.queued
     } catch (e) {
       console.warn(`Ingestion du chapitre ${id} (${title}) en echec:`, e)
       failures += 1
@@ -194,5 +226,15 @@ export async function analyzeManuscript(
     onProgress({ done, total, title })
   }
 
-  return { chapters: done, fichesCreated, fichesUpdated, alerts, failures, cancelled: false }
+  return { chapters: done, fichesCreated, fichesUpdated, alerts, queued, failures, cancelled: false }
+}
+
+/** Accept one queued suggestion: apply it to the bible, refresh fiches + index. */
+export async function applySuggestion(projectPath: string, s: Suggestion): Promise<void> {
+  await useWikiStore.getState().ensureLoaded()
+  const working = [...useWikiStore.getState().fiches]
+  const chapterId = s.sourceChapitre ?? 'manuel'
+  const r = await applyOneSuggestion(projectPath, s, chapterId, working, today())
+  await writeWikiIndex(projectPath, r.working)
+  await useWikiStore.getState().loadWiki(projectPath)
 }
