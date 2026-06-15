@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { EngineId } from '@shared/wiki'
 
 type SidebarPanel = 'project' | 'sheets' | 'analysis' | 'pages'
 type PaperColor = 'white' | 'cream' | 'sepia'
@@ -29,7 +30,7 @@ interface UIState {
   activeSection: 'ecriture' | 'univers'
 
   // Analysis engine ('api' or a CLI engine id)
-  analysisEngine: string
+  analysisEngine: EngineId
 
   // Actions
   toggleSidebar: () => void
@@ -50,7 +51,7 @@ interface UIState {
   resetZoom: () => void
   setIsExportingPdf: (value: boolean) => void
   setActiveSection: (activeSection: 'ecriture' | 'univers') => void
-  setAnalysisEngine: (id: string) => void
+  setAnalysisEngine: (id: EngineId) => void
 }
 
 // Apply theme to document

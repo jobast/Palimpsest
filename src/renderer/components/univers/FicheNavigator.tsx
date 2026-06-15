@@ -3,7 +3,7 @@ import { useWikiStore } from '@/stores/wikiStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useStatsStore } from '@/stores/statsStore'
 import { useUIStore } from '@/stores/uiStore'
-import { groupFichesByCategory, ficheKey, WIKI_CATEGORIES, CLI_ENGINES, type WikiCategory } from '@shared/wiki'
+import { groupFichesByCategory, ficheKey, WIKI_CATEGORIES, CLI_ENGINES, isCliEngine, type WikiCategory, type EngineId } from '@shared/wiki'
 import { Plus, Sparkles, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { writeAgentDoc } from '@/lib/wiki/wikiIO'
@@ -27,7 +27,13 @@ export function FicheNavigator() {
   const groups = groupFichesByCategory(fiches)
 
   useEffect(() => {
-    void detectEngines().then(setAvailableEngines).catch(() => setAvailableEngines([]))
+    void detectEngines()
+      .then(available => {
+        setAvailableEngines(available)
+        const current = useUIStore.getState().analysisEngine
+        if (isCliEngine(current) && !available.includes(current)) setAnalysisEngine('api')
+      })
+      .catch(() => setAvailableEngines([]))
   }, [])
 
   const handleTestEngine = async () => {
@@ -114,7 +120,7 @@ export function FicheNavigator() {
       <div className="mt-2 flex flex-col gap-1.5">
         <select
           value={analysisEngine}
-          onChange={e => setAnalysisEngine(e.target.value)}
+          onChange={e => setAnalysisEngine(e.target.value as EngineId)}
           className="w-full text-xs bg-background border border-border rounded px-1.5 py-1 text-muted-foreground"
         >
           <option value="api">API (réglages)</option>
