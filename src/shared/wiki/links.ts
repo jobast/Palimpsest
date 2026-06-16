@@ -85,3 +85,24 @@ export function buildGraph(fiches: Fiche[]): GraphData {
   })
   return { nodes, edges }
 }
+
+/** Anchor slug for a heading: lowercase, accent-stripped, non-alnum -> hyphen. */
+export function headingSlug(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+export interface Heading { level: number; text: string; slug: string }
+
+/** Table-of-contents entries from a markdown body: ## and ### headings (not # / h1). */
+export function extractHeadings(body: string): Heading[] {
+  const out: Heading[] = []
+  for (const line of body.split('\n')) {
+    const m = line.match(/^(#{2,3})\s+(.*?)\s*#*$/)
+    if (!m) continue
+    const text = m[2].replace(/[*_`]/g, '').trim()
+    if (!text) continue
+    out.push({ level: m[1].length, text, slug: headingSlug(text) })
+  }
+  return out
+}
