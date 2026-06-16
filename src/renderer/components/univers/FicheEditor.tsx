@@ -3,6 +3,8 @@ import { Eye, Pencil } from 'lucide-react'
 import { useWikiStore } from '@/stores/wikiStore'
 import { FicheStructuredFields } from './FicheStructuredFields'
 import { FicheBody } from './FicheBody'
+import { FicheInfobox } from './FicheInfobox'
+import { FicheToc } from './FicheToc'
 import { backlinks, ficheKey, type Fiche } from '@shared/wiki'
 
 export function FicheEditor() {
@@ -57,7 +59,7 @@ export function FicheEditor() {
         </button>
       </div>
 
-      <FicheStructuredFields fiche={draft} onChange={meta => scheduleSave({ ...draft, meta })} />
+      {editing && <FicheStructuredFields fiche={draft} onChange={meta => scheduleSave({ ...draft, meta })} />}
 
       {editing ? (
         <textarea
@@ -68,9 +70,22 @@ export function FicheEditor() {
         />
       ) : (
         <div className="flex-1 overflow-auto p-4 min-h-[12rem]">
-          {draft.body.trim()
-            ? <FicheBody body={draft.body} fiches={fiches} onNavigate={setActiveFiche} />
-            : <div className="text-muted-foreground text-sm">Fiche vide. Clique sur ✎ pour éditer.</div>}
+          {Array.isArray(draft.meta?.tags) && (draft.meta.tags as string[]).length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-3">
+              {(draft.meta.tags as string[]).map(t => (
+                <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t}</span>
+              ))}
+            </div>
+          )}
+          {draft.body.trim() ? (
+            <>
+              <FicheInfobox fiche={draft} />
+              <FicheToc body={draft.body} />
+              <FicheBody body={draft.body} fiches={fiches} onNavigate={setActiveFiche} />
+            </>
+          ) : (
+            <div className="text-muted-foreground text-sm">Fiche vide. Clique sur ✎ pour éditer.</div>
+          )}
         </div>
       )}
 
