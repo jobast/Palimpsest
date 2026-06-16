@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { wikilinksToMarkdown } from '../../shared/wiki/links.js'
+import { wikilinksToMarkdown, stripHtmlComments } from '../../shared/wiki/links.js'
+
+test('stripHtmlComments removes internal ingest markers', () => {
+  assert.equal(stripHtmlComments('Avant\n<!-- ingest:abc-123 -->\nAprès'), 'Avant\nAprès')
+  assert.equal(stripHtmlComments('Texte sans commentaire.'), 'Texte sans commentaire.')
+})
 
 test('converts [[target]] to a wiki: markdown link', () => {
   assert.equal(wikilinksToMarkdown('Voir [[kiran]] ici.'), 'Voir [kiran](wiki:kiran) ici.')

@@ -1,6 +1,6 @@
 import { isValidElement, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
-import { wikilinksToMarkdown, resolveWikilink, ficheKey, headingSlug, type Fiche } from '@shared/wiki'
+import { wikilinksToMarkdown, stripHtmlComments, resolveWikilink, ficheKey, headingSlug, type Fiche } from '@shared/wiki'
 
 /** Flatten react-markdown heading children to plain text (for the anchor id). */
 function childText(node: ReactNode): string {
@@ -13,7 +13,7 @@ function childText(node: ReactNode): string {
 /** Renders a fiche body as markdown, with [[wikilinks]] as clickable navigation.
  *  Broken wikilinks (no target fiche) are styled but not clickable. */
 export function FicheBody({ body, fiches, onNavigate }: { body: string; fiches: Fiche[]; onNavigate: (key: string) => void }) {
-  const md = wikilinksToMarkdown(body)
+  const md = wikilinksToMarkdown(stripHtmlComments(body))
 
   const components: Components = {
     h1: ({ children }) => <h1 id={headingSlug(childText(children))} className="text-lg font-bold mt-4 mb-1">{children}</h1>,

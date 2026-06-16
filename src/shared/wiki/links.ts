@@ -9,6 +9,11 @@ function normalize(s: string): string {
 
 const LINK_RE = /\[\[([^\[\]]+?)\]\]/g
 
+/** Strip HTML comments (e.g. internal `<!-- ingest:<id> -->` markers) for display. */
+export function stripHtmlComments(body: string): string {
+  return body.replace(/<!--[\s\S]*?-->[ \t]*\n?/g, '')
+}
+
 /** Extract [[target]] / [[target|display]] with positions. */
 export function extractWikilinks(body: string): WikiLink[] {
   const out: WikiLink[] = []
