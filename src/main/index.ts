@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, nativeImage, session, Menu, safeStorage } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
 import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
 import { CLI_ENGINES, engineCommand } from '../shared/wiki/engines.js'
@@ -824,11 +825,21 @@ ipcMain.handle('ai:chat', async (_event, request: AIChatRequest) => {
   return chatOpenAI(request, apiKey)
 })
 
+// GUI apps (launched from Finder/dock) inherit a minimal PATH that misses ~/.local/bin,
+// Homebrew, etc. - so `claude`/`codex`/`gemini` are not found. Augment PATH for our spawns.
+function spawnEnv(): NodeJS.ProcessEnv {
+  const home = os.homedir()
+  const extra = [`${home}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
+  const current = process.env.PATH ? process.env.PATH.split(':') : []
+  const merged = [...extra, ...current].filter((p, i, a) => p !== '' && a.indexOf(p) === i).join(':')
+  return { ...process.env, PATH: merged }
+}
+
 // Detect which subscription CLIs are installed (resolve via spawning `--version`).
 ipcMain.handle('wiki:detectEngines', async () => {
   const available: string[] = []
   await Promise.all(CLI_ENGINES.map(e => new Promise<void>((resolve) => {
-    const child = spawn(e.bin, ['--version'])
+    const child = spawn(e.bin, ['--version'], { env: spawnEnv() })
     child.on('error', () => resolve())          // not installed
     child.on('close', (code) => { if (code === 0) available.push(e.id); resolve() })
   })))
@@ -840,7 +851,7 @@ ipcMain.handle('wiki:runEngine', async (_, payload: { engineId: string; prompt: 
   const cmd = engineCommand(payload.engineId)
   if (!cmd) return { ok: false, error: `Moteur inconnu: ${payload.engineId}` }
   return await new Promise<{ ok: boolean; text?: string; error?: string }>((resolve) => {
-    const child = spawn(cmd.bin, cmd.args, { timeout: 300000 })  // 5 min cap
+    const child = spawn(cmd.bin, cmd.args, { timeout: 300000, env: spawnEnv() })  // 5 min cap
     let out = '', err = ''
     child.stdout.on('data', d => { out += d.toString() })
     child.stderr.on('data', d => { err += d.toString() })
@@ -880,8 +891,9 @@ ipcMain.handle('wiki:runAgent', async (_, payload: { projectPath: string; task: 
     '--append-system-prompt-file', payload.manualPath,
     '--output-format', 'stream-json', '--verbose',
     '--max-turns', String(payload.maxTurns ?? 60)]
-  // Force the user's subscription (not API/cloud billing): drop every auth/routing override.
-  const env = { ...process.env }
+  // Augmented PATH (so `claude` is found) + force the user's subscription (not API/cloud
+  // billing) by dropping every auth/routing override.
+  const env = spawnEnv()
   for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL',
     'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY']) delete env[k]
   return await new Promise<{ ok: boolean; summary?: string; error?: string }>((resolve) => {
