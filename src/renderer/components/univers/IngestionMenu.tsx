@@ -36,11 +36,14 @@ export function IngestionMenu({ onClose }: { onClose: () => void }) {
   const ids = project ? flattenChapterIds(project.manuscript.items) : []
   const rows = ids.map(id => ({ id, status: chapterStatus(hashContent(chapterMd(id)), integrations[id]) }))
 
-  // Default selection: everything not up-to-date.
+  // Start with nothing selected; the user picks via the quick-select controls or checkboxes.
   useEffect(() => {
-    setSelected(new Set(rows.filter(r => r.status !== 'current').map(r => r.id)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, integrations])
+    setSelected(new Set())
+  }, [project])
+
+  const selectAll = () => setSelected(new Set(rows.map(r => r.id)))
+  const selectNone = () => setSelected(new Set())
+  const selectStatus = (st: ChapterStatus) => setSelected(new Set(rows.filter(r => r.status === st).map(r => r.id)))
 
   const titleOf = (id: string): string => {
     if (!project) return id
@@ -95,6 +98,13 @@ export function IngestionMenu({ onClose }: { onClose: () => void }) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-sm font-medium">Analyser le manuscrit</span>
         <button onClick={onClose} className="p-1 rounded hover:bg-accent text-muted-foreground"><X size={16} /></button>
+      </div>
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border text-[11px] flex-wrap">
+        <button onClick={selectAll} disabled={running} className="px-1.5 py-0.5 rounded border border-border hover:bg-accent disabled:opacity-50">Tout</button>
+        <button onClick={selectNone} disabled={running} className="px-1.5 py-0.5 rounded border border-border hover:bg-accent disabled:opacity-50">Aucun</button>
+        <button onClick={() => selectStatus('never')} disabled={running} className="px-1.5 py-0.5 rounded border border-border hover:bg-accent disabled:opacity-50">Non ingérés</button>
+        <button onClick={() => selectStatus('stale')} disabled={running} className="px-1.5 py-0.5 rounded border border-border hover:bg-accent disabled:opacity-50">Modifiés</button>
+        <span className="ml-auto text-muted-foreground tabular-nums">{selected.size}/{rows.length}</span>
       </div>
       <div className="flex-1 overflow-auto p-2 space-y-0.5">
         {rows.map(r => (
