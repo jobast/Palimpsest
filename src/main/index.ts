@@ -928,3 +928,17 @@ ipcMain.handle('wiki:runAgent', async (_, payload: { projectPath: string; task: 
 })
 
 ipcMain.handle('wiki:cancelAgent', async () => { agentChild?.kill(); return { ok: true } })
+
+// Reset the Univers: rename wiki/ to a timestamped backup (never deletes). Returns the backup path.
+ipcMain.handle('wiki:reset', async (_, payload: { projectPath: string }) => {
+  const wikiDir = path.join(payload.projectPath, 'wiki')
+  if (!fs.existsSync(wikiDir)) return { ok: true }
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const backup = path.join(payload.projectPath, `.wiki-backup-${stamp}`)
+  try {
+    fs.renameSync(wikiDir, backup)
+    return { ok: true, backup }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+})

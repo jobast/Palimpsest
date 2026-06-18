@@ -129,6 +129,7 @@ export interface ElectronAPI {
   runWikiEngine: (payload: { engineId: string; prompt: string }) => Promise<{ ok: boolean; text?: string; error?: string }>
   runWikiAgent: (payload: { projectPath: string; task: string; manualPath: string; maxTurns?: number }) => Promise<{ ok: boolean; summary?: string; error?: string }>
   cancelWikiAgent: () => Promise<{ ok: boolean }>
+  resetWiki: (payload: { projectPath: string }) => Promise<{ ok: boolean; backup?: string; error?: string }>
   onWikiAgentProgress: (callback: (evt: { kind: string; label: string }) => void) => void
   offWikiAgentProgress: () => void
 }

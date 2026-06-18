@@ -13,6 +13,7 @@ interface WikiState {
   isLoading: boolean
 
   loadWiki: (projectPath: string) => Promise<void>
+  resetWiki: () => Promise<{ ok: boolean; backup?: string; error?: string }>
   undoChapter: (chapterId: string) => Promise<void>
   refreshSuggestions: () => Promise<void>
   ensureLoaded: () => Promise<void>
@@ -37,6 +38,16 @@ export const useWikiStore = create<WikiState>((set, get) => ({
       loadFiches(projectPath), loadSuggestions(projectPath), loadIntegrations(projectPath)
     ])
     set({ fiches, suggestions, integrations, loadedPath: projectPath, isLoading: false })
+  },
+
+  resetWiki: async () => {
+    const { projectPath } = useProjectStore.getState()
+    if (!projectPath) return { ok: false, error: 'Aucun projet ouvert' }
+    const res = await window.electronAPI.resetWiki({ projectPath })
+    if (res.ok) {
+      set({ fiches: [], suggestions: [], integrations: {}, activeFicheKey: null })
+    }
+    return res
   },
 
   undoChapter: async (chapterId) => {

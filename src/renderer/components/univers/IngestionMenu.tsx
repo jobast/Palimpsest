@@ -83,6 +83,13 @@ export function IngestionMenu({ onClose }: { onClose: () => void }) {
 
   const stop = () => { cancelRef.current = true; cancelAgent() }
 
+  const doReset = async () => {
+    if (!confirm('Vider tout l\'Univers (les fiches seront sauvegardées dans un dossier .wiki-backup) ?')) return
+    const res = await useWikiStore.getState().resetWiki()
+    showNotification(res.ok ? 'success' : 'error',
+      res.ok ? `Univers vidé${res.backup ? ' (sauvegarde faite)' : ''}. Relance l'analyse avec l'agent.` : `Échec : ${res.error}`)
+  }
+
   return (
     <div className="absolute inset-0 z-10 bg-card flex flex-col">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
@@ -100,6 +107,14 @@ export function IngestionMenu({ onClose }: { onClose: () => void }) {
       </div>
       <div className="border-t border-border p-2 space-y-1.5">
         {running && <div className="text-xs text-muted-foreground truncate flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />{activity || 'Analyse en cours…'}</div>}
+        <button
+          onClick={() => { void doReset() }}
+          disabled={running}
+          className="w-full px-2 py-1 rounded text-xs border border-red-300 text-red-600 hover:bg-red-50"
+          title="Sauvegarde puis vide tout le wiki (pour relancer propre)"
+        >
+          Repartir à neuf (vider l'Univers)
+        </button>
         <div className="flex gap-1.5">
           {!running ? (
             <button onClick={() => { void run() }} className="flex-1 px-2 py-1.5 rounded text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-accent">

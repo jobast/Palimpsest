@@ -114,6 +114,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runWikiAgent: (payload: { projectPath: string; task: string; manualPath: string; maxTurns?: number }) =>
     ipcRenderer.invoke('wiki:runAgent', payload),
   cancelWikiAgent: () => ipcRenderer.invoke('wiki:cancelAgent'),
+  resetWiki: (payload: { projectPath: string }) => ipcRenderer.invoke('wiki:reset', payload),
   onWikiAgentProgress: (callback: (evt: { kind: string; label: string }) => void) =>
     ipcRenderer.on('wiki:agentProgress', (_, evt) => callback(evt)),
   offWikiAgentProgress: () => ipcRenderer.removeAllListeners('wiki:agentProgress')
