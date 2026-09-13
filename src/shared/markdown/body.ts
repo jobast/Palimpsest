@@ -1,9 +1,43 @@
 import type { TipTapDoc, TipTapNode } from './types.js'
 
+// --- Supported schema ---------------------------------------------------------
+
+export const SUPPORTED_MARK_TYPES: ReadonlySet<string> = new Set([
+  'bold', 'italic', 'strike', 'code', 'underline', 'highlight'
+])
+
+/** Nesting order when writing, outermost first. `code` is always innermost. */
+export const MARK_ORDER: readonly string[] = ['highlight', 'underline', 'strike', 'italic', 'bold', 'code']
+
+const MARK_DELIMS: Record<string, [open: string, close: string]> = {
+  highlight: ['==', '=='],
+  underline: ['<u>', '</u>'],
+  strike: ['~~', '~~'],
+  italic: ['*', '*'],
+  bold: ['**', '**'],
+  code: ['`', '`']
+}
+
+// Delimiters tried by the reader, longest first so ** wins over *.
+const INLINE_DELIMS: Array<[type: string, open: string, close: string]> = [
+  ['bold', '**', '**'],
+  ['italic', '*', '*'],
+  ['strike', '~~', '~~'],
+  ['highlight', '==', '=='],
+  ['underline', '<u>', '</u>']
+]
+
+const ESCAPABLE = new Set(['*', '_', '\\', '`', '~', '=', '<', '>', '#', '+', '-', '.'])
+
 // --- Serialization: doc JSON → markdown body -------------------------------
 
+/** Escape characters/sequences that would open a mark when read back. */
 function escapeInline(text: string): string {
-  return text.replace(/([*_\\])/g, '\\$1')
+  return text
+    .replace(/([*_\\`])/g, '\\$1')
+    .replace(/~~/g, '\\~~')
+    .replace(/==/g, '\\==')
+    .replace(/<(\/?u)>/g, '\\<$1>')
 }
 
 function escapeLeading(line: string): string {
@@ -16,20 +50,34 @@ function escapeLeading(line: string): string {
     .replace(/^(\s*)(\d+)\./, '$1$2\\.')
 }
 
-function serializeInline(nodes: TipTapNode[] | undefined): string {
+function sortMarks(types: string[]): string[] {
+  return Array.from(new Set(types))
+    .filter(t => SUPPORTED_MARK_TYPES.has(t))
+    .sort((a, b) => MARK_ORDER.indexOf(a) - MARK_ORDER.indexOf(b))
+}
+
+function wrapMarks(text: string, types: string[]): string {
+  let out = text
+  // innermost first: walk MARK_ORDER from the end
+  for (let i = MARK_ORDER.length - 1; i >= 0; i--) {
+    const t = MARK_ORDER[i]
+    if (types.includes(t)) out = MARK_DELIMS[t][0] + out + MARK_DELIMS[t][1]
+  }
+  return out
+}
+
+export function serializeInline(nodes: TipTapNode[] | undefined): string {
   if (!nodes) return ''
   let out = ''
   for (const node of nodes) {
     if (node.type === 'hardBreak') {
-      out += '  \n'
+      out += '\\\n'
       continue
     }
     if (node.type !== 'text' || typeof node.text !== 'string') continue
-    let text = escapeInline(node.text)
-    const marks = node.marks?.map(m => m.type) ?? []
-    if (marks.includes('bold')) text = `**${text}**`
-    if (marks.includes('italic')) text = `*${text}*`
-    out += text
+    const types = sortMarks((node.marks ?? []).map(m => m.type))
+    const raw = types.includes('code') ? node.text : escapeInline(node.text)
+    out += wrapMarks(raw, types)
   }
   return out
 }
@@ -63,34 +111,79 @@ export function docToMarkdownBody(doc: TipTapDoc): string {
   return blocks.length ? blocks.join('\n\n') + '\n' : ''
 }
 
-// --- Parsing: markdown body → doc content nodes ----------------------------
+// --- Inline parsing -----------------------------------------------------------
 
-function unescapeInline(text: string): string {
-  return text.replace(/\\([*_\\#>+\-.])/g, '$1')
+/** Index of the next unescaped `delim` at or after `from`, or -1. */
+function findClose(line: string, from: number, delim: string): number {
+  let i = from
+  while (i < line.length) {
+    if (line[i] === '\\') { i += 2; continue }
+    if (line.startsWith(delim, i)) return i
+    i++
+  }
+  return -1
 }
 
-// Tokenize a single paragraph's text into text nodes carrying bold/italic.
-// Order matters: *** then ** then *.
-function parseInline(line: string): TipTapNode[] {
-  const tokens: TipTapNode[] = []
-  const re = /\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*]+)\*/g
-  let last = 0
-  let m: RegExpExecArray | null
-  const pushText = (raw: string, marks?: string[]) => {
-    if (!raw) return
-    const node: TipTapNode = { type: 'text', text: unescapeInline(raw) }
-    if (marks?.length) node.marks = marks.map(type => ({ type }))
-    tokens.push(node)
+/**
+ * Tokenize one physical line into text nodes carrying marks. Delimiters toggle
+ * marks; an opener with no matching closer on the line is literal text; `\x`
+ * yields a literal x for every escapable x (legacy \- and \. included).
+ */
+export function parseInline(line: string): TipTapNode[] {
+  const out: TipTapNode[] = []
+  const open: string[] = []
+  let buf = ''
+  const flush = () => {
+    if (!buf) return
+    const node: TipTapNode = { type: 'text', text: buf }
+    if (open.length) node.marks = sortMarks(open).map(type => ({ type }))
+    out.push(node)
+    buf = ''
   }
-  while ((m = re.exec(line)) !== null) {
-    pushText(line.slice(last, m.index))
-    if (m[1] !== undefined) pushText(m[1], ['bold', 'italic'])
-    else if (m[2] !== undefined) pushText(m[2], ['bold'])
-    else if (m[3] !== undefined) pushText(m[3], ['italic'])
-    last = re.lastIndex
+  let i = 0
+  while (i < line.length) {
+    const ch = line[i]
+    if (ch === '\\' && i + 1 < line.length && ESCAPABLE.has(line[i + 1])) {
+      buf += line[i + 1]
+      i += 2
+      continue
+    }
+    if (ch === '`') {
+      const close = line.indexOf('`', i + 1)
+      if (close > i) {
+        flush()
+        open.push('code')
+        buf = line.slice(i + 1, close)
+        flush()
+        open.pop()
+        i = close + 1
+        continue
+      }
+    }
+    let matched = false
+    for (const [type, openD, closeD] of INLINE_DELIMS) {
+      if (open.includes(type)) {
+        if (line.startsWith(closeD, i)) {
+          flush()
+          open.splice(open.indexOf(type), 1)
+          i += closeD.length
+          matched = true
+          break
+        }
+      } else if (line.startsWith(openD, i) && findClose(line, i + openD.length, closeD) !== -1) {
+        flush()
+        open.push(type)
+        i += openD.length
+        matched = true
+        break
+      }
+    }
+    if (matched) continue
+    buf += ch
+    i++
   }
-  pushText(line.slice(last))
-  return tokens
+  flush()
+  return out
 }
 
 function parseBlock(raw: string): TipTapNode | null {
