@@ -332,7 +332,7 @@ function parseBlocks(lines: string[]): TipTapNode[] {
     const parts: TipTapNode[] = []
     let cur = line
     for (;;) {
-      const hard = /(\\|  )$/.test(cur)
+      const hard = /(\\| {2})$/.test(cur)
       let text = cur.replace(/\s+$/, '')
       if (hard && text.endsWith('\\')) text = text.slice(0, -1)
       parts.push(...parseInline(text))
