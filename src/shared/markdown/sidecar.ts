@@ -18,7 +18,17 @@ export type SidecarParseResult =
   | { ok: true; sidecar: ChapterSidecar }
   | { ok: false; reason: 'corrupt' | 'unknown-version' | 'invalid-doc' }
 
+/**
+ * Chapter ids come from project.json, which the app does not own alone. Only a
+ * plain id may become a path: `../../project` would resolve inside the .palim
+ * root and let the save loop overwrite the manifest.
+ */
+export function isSafeChapterId(chapterId: string): boolean {
+  return /^[A-Za-z0-9_-]{1,64}$/.test(chapterId)
+}
+
 export function sidecarPath(chapterId: string): string {
+  if (!isSafeChapterId(chapterId)) throw new Error('Identifiant de chapitre invalide')
   return `${SIDECAR_DIR}/${chapterId}.json`
 }
 

@@ -13,7 +13,7 @@ import type {
   DailyStats,
   StatsData
 } from '@shared/types/project'
-import { serializeChapter, planChapterFiles, orphanFiles, resolveChapterDoc, sidecarPath, stringifySidecar, sha256Hex, SIDECAR_DIR, type ChapterRef } from '@shared/markdown'
+import { serializeChapter, planChapterFiles, orphanFiles, resolveChapterDoc, sidecarPath, isSafeChapterId, stringifySidecar, sha256Hex, SIDECAR_DIR, type ChapterRef } from '@shared/markdown'
 import type { TipTapDoc } from '@shared/markdown'
 import { aggregateDailyStats } from '@/lib/stats/aggregations'
 import { calculateStreak } from '@/lib/stats/calculations'
@@ -351,6 +351,14 @@ const loadManuscriptFromDisk = async (
 
   for (const ref of chapterRefs) {
     const fallbackTitle = ref.file.replace(/^chapitres\//, '').replace(/\.md$/, '')
+    // An id that is not a plain token must never become a path: the chapter is kept
+    // as unreadable, so it is neither read via its sidecar nor rewritten.
+    if (!isSafeChapterId(ref.id)) {
+      console.error(`[projet] identifiant de chapitre invalide, chapitre en lecture seule: ${ref.id}`)
+      items.push({ id: ref.id, type: 'chapter', title: fallbackTitle, status: 'draft', wordCount: 0, children: [], loadState: 'unreadable' })
+      unreadable += 1
+      continue
+    }
     const fileResult = await window.electronAPI.readFile(`${projectPath}/${ref.file}`)
     const sidecarResult = await window.electronAPI.readFile(`${projectPath}/${sidecarPath(ref.id)}`)
     const resolved = await resolveChapterDoc({
@@ -1223,7 +1231,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const file = refById.get(item.id)
         if (!file) continue
         // An unreadable chapter is never serialized: we do not hold its content.
-        if (item.loadState === 'unreadable') continue
+        // An unsafe id is unreadable too (loadManuscriptFromDisk marked it as such).
+        if (item.loadState === 'unreadable' || !isSafeChapterId(item.id)) continue
         const json = docContents.get(item.id)
         const doc: TipTapDoc = json
           ? (JSON.parse(json) as TipTapDoc)
@@ -1253,7 +1262,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         await window.electronAPI.deleteFile(`${projectPath}/${orphan}`)
       }
       for (const ref of get().chapterRefs) {
-        if (!keptIds.has(ref.id)) await window.electronAPI.deleteFile(`${projectPath}/${sidecarPath(ref.id)}`)
+        if (!keptIds.has(ref.id) && isSafeChapterId(ref.id)) await window.electronAPI.deleteFile(`${projectPath}/${sidecarPath(ref.id)}`)
       }
 
       // Manifest = meta + ordered chapter refs.

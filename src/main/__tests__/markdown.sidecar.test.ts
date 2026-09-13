@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  SIDECAR_DIR, sidecarPath, stringifySidecar, parseSidecar, type ChapterSidecar
+  SIDECAR_DIR, sidecarPath, isSafeChapterId, stringifySidecar, parseSidecar, type ChapterSidecar
 } from '../../shared/markdown/sidecar.js'
 
 const doc = { type: 'doc' as const, content: [
@@ -16,6 +16,20 @@ const doc = { type: 'doc' as const, content: [
 test('sidecarPath is id-based under the hidden .palim dir', () => {
   assert.equal(SIDECAR_DIR, 'chapitres/.palim')
   assert.equal(sidecarPath('abc-123'), 'chapitres/.palim/abc-123.json')
+})
+
+test('a manifest id that could escape the project is rejected', () => {
+  for (const id of ['../x', 'a/b', 'a\\b', '', '.', '..', 'a b', 'é', 'x'.repeat(65)]) {
+    assert.equal(isSafeChapterId(id), false, `attendu non sûr : ${JSON.stringify(id)}`)
+    assert.throws(() => sidecarPath(id), /Identifiant de chapitre invalide/)
+  }
+})
+
+test('a uuid and plain ids are safe', () => {
+  for (const id of ['550e8400-e29b-41d4-a716-446655440000', 'ch_01', 'A-1', 'x'.repeat(64)]) {
+    assert.equal(isSafeChapterId(id), true, `attendu sûr : ${id}`)
+    assert.equal(sidecarPath(id), `chapitres/.palim/${id}.json`)
+  }
 })
 
 test('stringify/parse round-trips every node, attr and mark exactly', () => {
