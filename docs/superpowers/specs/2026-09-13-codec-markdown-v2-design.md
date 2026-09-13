@@ -60,9 +60,9 @@ Module pur `src/shared/markdown/body.ts` (réécrit), sans import Node ni Electr
 | Nœud TipTap | Markdown | Attributs |
 |---|---|---|
 | `paragraph`, `firstParagraph` | ligne(s) de texte ; blocs séparés par une ligne blanche | `textAlign` : sidecar seulement |
-| `heading` (level 1-3) | `#`, `##`, `###` ; level hors 1-3 borné à 3 dans le `.md`, exact dans le sidecar | `textAlign` : sidecar seulement |
+| `heading` (level 1-3) | `#`, `##`, `###` ; à la lecture `#` à `######` sont acceptés et le niveau est borné à 3 (notes collées dans Savana) ; exact dans le sidecar | `textAlign` : sidecar seulement |
 | `sceneBreak` | `* * *` (réservé) | |
-| `bulletList` / `orderedList` / `listItem` | `- item` / `1. item` ; imbrication par 2 espaces ; en `.md`, un paragraphe par item (les paragraphes suivants d'un item sont émis indentés sur la ligne suivante ; forme exacte dans le sidecar) | `start` d'`orderedList` : numéro du premier item |
+| `bulletList` / `orderedList` / `listItem` | `+ item` / `1. item` ; les blocs suivants d'un item sont indentés de la largeur du marqueur ; à la lecture, `+ ` et `* ` ouvrent une puce, **jamais `- `** (voir 4.4) | `start` d'`orderedList` : numéro du premier item |
 | `blockquote` | chaque ligne des blocs enfants préfixée `> ` ; imbrication `> > ` | |
 | `codeBlock` | fence ``` + `language` sur la ligne d'ouverture | |
 | `horizontalRule` | `---` (distinct de `* * *`) | |
@@ -92,9 +92,11 @@ Marks inconnus : ignorés dans le `.md`, exacts dans le sidecar.
 À l'écriture, dans le texte courant (hors `code`) :
 - caractères : `\`, `*`, `_` (comme aujourd'hui) ;
 - séquences ouvrant un mark : `~~`, `==`, `` ` ``, `<u>`, `</u>` → premier caractère échappé (`\~~`, `\==`, `` \` ``, `\<u>`) ;
-- début de bloc : `#`, `>`, `+`, `-`, `* `, `N.`, ` ``` `, `---` (déjà en place, étendu à ` ``` ` et `---`).
+- début de bloc : `#`, `>`, `+`, `* `, `N. `, ` ``` `, `---`. **Le `-` en début de ligne n'est plus échappé** : c'est le tiret de dialogue français (324 lignes dans Savana), il reste lisible tel quel.
 
-Un `~`, `=` ou `<` isolé dans la prose n'est jamais échappé. À la lecture, `\x` redonne `x` pour tout `x` échappable.
+Un `~`, `=` ou `<` isolé dans la prose n'est jamais échappé. À la lecture, `\x` redonne `x` pour tout `x` échappable (`-` compris, pour les fichiers écrits par l'ancien codec).
+
+Pertes volontaires du `.md` (exactes dans le sidecar, documentées par `projectMarkdown`) : `textAlign`, couleur de `highlight`, nœuds et marks inconnus, paragraphes vides, niveaux de titre au-delà de 3, espaces en fin de ligne.
 
 ### 4.4 Parseur tolérant (chemin de secours)
 
@@ -104,8 +106,8 @@ Lecture ligne à ligne du corps :
 3. `#{1,3} ` : `heading`.
 4. ` ``` ` : ouvre un `codeBlock` jusqu'à la fence fermante (contenu brut).
 5. `> ` : ligne de `blockquote` ; les lignes consécutives forment un bloc dont le contenu est parsé récursivement après retrait du préfixe.
-6. `- `, `* `, `+ `, `N. ` : item de liste ; l'indentation (multiples de 2 espaces) donne l'imbrication ; les lignes suivantes indentées au niveau de l'item en sont la continuation.
-7. Autre ligne non vide : **un paragraphe**. Si la ligne se termine par `\` ou par deux espaces, la ligne suivante non vide est ajoutée au même paragraphe après un `hardBreak`.
+6. `+ `, `* `, `N. ` : item de liste ; les lignes suivantes indentées d'au moins la largeur du marqueur en sont la continuation (blocs imbriqués, listes imbriquées). **`- ` n'ouvre jamais une liste** : c'est un paragraphe de dialogue.
+7. Autre ligne non vide (y compris `- Dialogue`) : **un paragraphe**. Si la ligne se termine par `\` ou par deux espaces, la ligne suivante non vide est ajoutée au même paragraphe après un `hardBreak`.
 
 Règle 7 est le changement de comportement clé : un `\n` simple sépare deux paragraphes (fin du soft-wrap). C'est ce qui rend Savana lisible correctement.
 
@@ -155,7 +157,7 @@ Emplacement : `src/main/__tests__/` (runner `node --test`, convention actuelle).
 5. **Garde runtime** : au montage de l'éditeur, `Object.keys(editor.schema.nodes)` et `.marks` comparés à `CODEC_SUPPORTED_NAMES` ; tout écart → `console.error` et, en développement, notification.
 6. **Parseur tolérant** : `\n` simple = deux paragraphes ; `  \n` et `\` = `hardBreak` ; `* * *` vs `---` ; listes imbriquées et ordonnées avec `start` ; citation multi-blocs ; fence avec langue ; échappements ; ouverture sans fermeture.
 7. **Chargement** (test du module pur `src/shared/markdown/load.ts` qui encapsule la décision sidecar/markdown à partir de `{ md, sidecarText, refId }`) : sidecar valide ; hash divergent ; JSON corrompu ; version inconnue ; `doc.type` invalide ; frontmatter `id` divergent → `refId` conservé ; entrée `unreadable`.
-8. **Savana** : fixture de 3 extraits réels anonymisés au format `\n` simple ; `parse` puis `serialize` puis `parse` conserve le nombre et le contenu des paragraphes.
+8. **Format Savana** : fixtures synthétiques reproduisant les motifs observés dans les 103 chapitres (paragraphes séparés par `\n` simple, dialogues `- `, titres `#####`, notes numérotées `N. `, deux espaces en fin de ligne) ; `parse` puis `serialize` puis `parse` conserve le nombre et le contenu des paragraphes, et aucun dialogue ne devient une liste.
 
 ## 8. Fichiers touchés
 
