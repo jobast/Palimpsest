@@ -51,3 +51,12 @@ test('status/synopsis/pov survive round-trip', () => {
   assert.match(out, /status: revision/)
   assert.match(out, /pov: Marie/)
 })
+
+test('parseChapter: the manifest id wins over a divergent or missing frontmatter id', () => {
+  const a = parseChapter('---\nid: ancien\ntitle: T\n---\nTexte.\n', 'f', 'ref-1')
+  assert.equal(a.frontmatter.id, 'ref-1')
+  const b = parseChapter('Texte sans frontmatter.', 'f', 'ref-2')
+  assert.equal(b.frontmatter.id, 'ref-2')
+  const c = parseChapter('---\nid: garde\ntitle: T\n---\nx\n', 'f')
+  assert.equal(c.frontmatter.id, 'garde')
+})

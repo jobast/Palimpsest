@@ -10,12 +10,12 @@ function genId(): string {
   return crypto.randomUUID()
 }
 
-/** chapter .md text → { frontmatter, doc } (doc carries a chapterTitle node). */
-export function parseChapter(md: string, fallbackTitle: string): ParsedChapter {
+/** chapter .md text → { frontmatter, doc }. When `refId` (manifest id) is given it always wins. */
+export function parseChapter(md: string, fallbackTitle: string, refId?: string): ParsedChapter {
   const { data, body } = parseFrontmatter(md)
   const title = typeof data.title === 'string' && data.title.trim() ? data.title : fallbackTitle
   const frontmatter: ChapterFrontmatter = {
-    id: typeof data.id === 'string' && data.id ? data.id : genId(),
+    id: refId ?? (typeof data.id === 'string' && data.id ? data.id : genId()),
     title
   }
   if (typeof data.status === 'string' && (VALID_STATUS as string[]).includes(data.status)) {
