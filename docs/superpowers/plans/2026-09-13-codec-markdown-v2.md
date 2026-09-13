@@ -1579,7 +1579,7 @@ Créer un projet de test dans l'app (`npm run launch:dev`, Nouveau projet → `/
 ```bash
 cp -R ~/Desktop/Savana.palim /tmp/Savana-test.palim
 ```
-Ouvrir `/tmp/Savana-test.palim` dans l'app (jamais l'original) : les chapitres montrent leurs paragraphes séparés (18 pour le 5e chapitre, pas 1), les dialogues `- ` restent des paragraphes, aucune notification « rechargé » (pas de sidecar = normal). **Ne pas taper dans Savana-test avant la Task 9** (la sauvegarde n'écrit pas encore les sidecars ; le `.md` serait canonisé mais sans perte, ce qui est acceptable sur la copie).
+Ouvrir `/tmp/Savana-test.palim` dans l'app (jamais l'original) : les chapitres montrent leurs paragraphes séparés (20 pour le 5e chapitre, pas 1), les dialogues `- ` restent des paragraphes, aucune notification « rechargé » (pas de sidecar = normal). **Ne pas taper dans Savana-test avant la Task 9** (la sauvegarde n'écrit pas encore les sidecars ; le `.md` serait canonisé mais sans perte, ce qui est acceptable sur la copie).
 
 - [ ] **Step 5: Commit**
 
@@ -1667,7 +1667,7 @@ Expected: 0 erreur.
 ```bash
 ls /tmp/Savana-test.palim/chapitres/.palim | wc -l          # 103
 python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['version'], len(d['mdHash']), d['doc']['type'])" /tmp/Savana-test.palim/chapitres/.palim/$(ls /tmp/Savana-test.palim/chapitres/.palim | head -1)   # 1 64 doc
-awk 'BEGIN{fm=0} /^---$/{fm++; next} fm>=2 && NF' /tmp/Savana-test.palim/chapitres/005-*.md | wc -l   # 18 paragraphes conservés
+awk 'BEGIN{fm=0} /^---$/{fm++; next} fm>=2 && NF' /tmp/Savana-test.palim/chapitres/005-*.md | wc -l   # 20 paragraphes conservés
 grep -c '^- ' /tmp/Savana-test.palim/chapitres/*.md | awk -F: '{s+=$2} END{print s}'   # 324 : les tirets de dialogue sont intacts
 ```
 Fermer et rouvrir : aucune notification « rechargé depuis le Markdown » (les hash correspondent). Modifier un `.md` à la main dans la copie, rouvrir : notification « 1 chapitre rechargé depuis le Markdown » et le texte modifié est visible.
@@ -1826,7 +1826,7 @@ Expected: tous les tests passent (≥ 190 : 130 existants + nouveaux), 0 erreur 
 ```bash
 rm -rf /tmp/Savana-test.palim && cp -R ~/Desktop/Savana.palim /tmp/Savana-test.palim
 ```
-Dans l'app : ouvrir la copie, ouvrir le chapitre 5, compter visuellement les paragraphes (18), taper un mot, ⌘S, fermer l'app, rouvrir la copie : même texte, même nombre de paragraphes, dialogues intacts, 103 sidecars présents, aucune notification. Comparer la copie et l'original :
+Dans l'app : ouvrir la copie, ouvrir le chapitre 5, compter visuellement les paragraphes (20), taper un mot, ⌘S, fermer l'app, rouvrir la copie : même texte, même nombre de paragraphes, dialogues intacts, 103 sidecars présents, aucune notification. Comparer la copie et l'original :
 ```bash
 diff <(cd ~/Desktop/Savana.palim/chapitres && grep -hc '' *.md | paste -sd+ | bc) <(cd /tmp/Savana-test.palim/chapitres && grep -hc '' *.md | paste -sd+ | bc) ; echo "(les comptes de lignes différent : la copie a des lignes blanches canoniques ; c'est attendu)"
 diff <(cd ~/Desktop/Savana.palim/chapitres && cat *.md | tr -d '\n' | wc -c) <(cd /tmp/Savana-test.palim/chapitres && cat *.md | tr -d '\n' | wc -c) && echo "OK: même nombre de caractères hors sauts de ligne"
