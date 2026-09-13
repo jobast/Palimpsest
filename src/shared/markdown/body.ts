@@ -212,7 +212,9 @@ function serializeBlock(node: TipTapNode): string | null {
     }
     case 'paragraph':
     case 'firstParagraph':
-      return escapeLeading(serializeInline(node.content))
+      // Every physical line matters: a hard break starts a new one, and that line
+      // must be escaped too or it would read back as a block of its own.
+      return serializeInline(node.content).split('\n').map(escapeLeading).join('\n')
     case 'codeBlock': {
       const lang = typeof node.attrs?.language === 'string' ? node.attrs.language : ''
       const text = inlineTextOf(node)

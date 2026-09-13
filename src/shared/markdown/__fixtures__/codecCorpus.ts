@@ -37,6 +37,15 @@ export const CODEC_CORPUS: CorpusEntry[] = [
     para('left', t('avant')), { type: 'sceneBreak' }, para('left', t('après')), { type: 'horizontalRule' }, para('left', t('fin'))) },
   { name: 'hard breaks', markdownExact: true, doc: doc(title('HB'),
     para('left', t('vers un'), { type: 'hardBreak' }, t('vers deux'), { type: 'hardBreak' }, t('vers trois'))) },
+  { name: 'hard break before block openers', markdownExact: true, doc: doc(title('HB2'),
+    para('left', t('avant'), { type: 'hardBreak' }, t('# titre'), { type: 'hardBreak' }, t('+ puce'),
+      { type: 'hardBreak' }, t('> cite'), { type: 'hardBreak' }, t('3. liste'),
+      { type: 'hardBreak' }, t('---'), { type: 'hardBreak' }, t('* * *'))) },
+  { name: 'hard break inside a list item and a blockquote', markdownExact: true, doc: doc(title('HB3'),
+    { type: 'bulletList', content: [
+      { type: 'listItem', content: [para('left', t('un'), { type: 'hardBreak' }, t('deux'))] }
+    ] },
+    { type: 'blockquote', content: [para('left', t('trois'), { type: 'hardBreak' }, t('quatre'))] }) },
   { name: 'bullet list nested with multi-paragraph item', markdownExact: true, doc: doc(title('L'),
     { type: 'bulletList', content: [
       { type: 'listItem', content: [para('left', t('parent')), { type: 'bulletList', content: [{ type: 'listItem', content: [para('left', t('enfant'))] }] }] },
