@@ -13,7 +13,7 @@ import type {
   DailyStats,
   StatsData
 } from '@shared/types/project'
-import { serializeChapter, planChapterFiles, orphanFiles, resolveChapterDoc, sidecarPath, type ChapterRef } from '@shared/markdown'
+import { serializeChapter, planChapterFiles, orphanFiles, resolveChapterDoc, sidecarPath, stringifySidecar, sha256Hex, SIDECAR_DIR, type ChapterRef } from '@shared/markdown'
 import type { TipTapDoc } from '@shared/markdown'
 import { aggregateDailyStats } from '@/lib/stats/aggregations'
 import { calculateStreak } from '@/lib/stats/calculations'
@@ -928,6 +928,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Create project directory structure
       await ensureCreateDirectory(projectPath)
       await ensureCreateDirectory(`${projectPath}/chapitres`)
+      await ensureCreateDirectory(`${projectPath}/${SIDECAR_DIR}`)
       await ensureCreateDirectory(`${projectPath}/sheets`)
       await ensureCreateDirectory(`${projectPath}/stats`)
       await ensureCreateDirectory(`${projectPath}/reports`)
@@ -941,17 +942,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       )
       for (const ref of initialRefs) {
         const item = project.manuscript.items.find(i => i.id === ref.id)!
+        const initialDoc: TipTapDoc = {
+          type: 'doc',
+          content: [
+            { type: 'chapterTitle', content: [{ type: 'text', text: item.title }] },
+            { type: 'firstParagraph', content: [] }
+          ]
+        }
         const md = serializeChapter({
           frontmatter: { id: item.id, title: item.title, status: item.status },
-          doc: {
-            type: 'doc',
-            content: [
-              { type: 'chapterTitle', content: [{ type: 'text', text: item.title }] },
-              { type: 'firstParagraph', content: [] }
-            ]
-          }
+          doc: initialDoc
         })
         await ensureWriteFile(`${projectPath}/${ref.file}`, md)
+        await ensureWriteFile(
+          `${projectPath}/${sidecarPath(ref.id)}`,
+          stringifySidecar({ version: 1, mdHash: await sha256Hex(md), savedAt: new Date().toISOString(), doc: initialDoc })
+        )
       }
 
       // Write project manifest (meta + chapter refs)
@@ -1212,9 +1218,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const refById = new Map(newRefs.map(r => [r.id, r.file]))
       const docContents = useEditorStore.getState().getAllDocumentContents()
 
+      await ensureCreateDirectory(`${projectPath}/${SIDECAR_DIR}`)
       for (const item of items) {
         const file = refById.get(item.id)
         if (!file) continue
+        // An unreadable chapter is never serialized: we do not hold its content.
+        if (item.loadState === 'unreadable') continue
         const json = docContents.get(item.id)
         const doc: TipTapDoc = json
           ? (JSON.parse(json) as TipTapDoc)
@@ -1229,12 +1238,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           },
           doc
         })
+        // .md first, then the sidecar: an interruption in between leaves a stale hash,
+        // so the next load falls back to the fresh .md rather than an old doc.
         await ensureWriteFile(`${projectPath}/${file}`, md)
+        await ensureWriteFile(
+          `${projectPath}/${sidecarPath(item.id)}`,
+          stringifySidecar({ version: 1, mdHash: await sha256Hex(md), savedAt: new Date().toISOString(), doc })
+        )
       }
 
-      // Delete .md files for removed chapters (journal-aware).
+      // Delete .md files and sidecars for removed chapters (journal-aware).
+      const keptIds = new Set(newRefs.map(r => r.id))
       for (const orphan of orphanFiles(get().chapterRefs, newRefs)) {
         await window.electronAPI.deleteFile(`${projectPath}/${orphan}`)
+      }
+      for (const ref of get().chapterRefs) {
+        if (!keptIds.has(ref.id)) await window.electronAPI.deleteFile(`${projectPath}/${sidecarPath(ref.id)}`)
       }
 
       // Manifest = meta + ordered chapter refs.
