@@ -1843,3 +1843,17 @@ git commit -m "docs: describe the .palim v2 chapter format (extended markdown + 
 - [ ] **Step 5: Bilan**
 
 Rapporter : nombre de tests, résultat du typecheck, résultat des vérifications manuelles (Task 9 §4, Task 10 §4, Task 11 §3) avec les chiffres observés. Ne rien déclarer « vérifié » sans l'avoir observé.
+
+---
+
+## Suites reportées (issues des revues, à reprendre en 0b)
+
+Constats acceptés ou hors périmètre de 0a, consignés ici pour ne pas les perdre :
+
+1. **Valider `ref.file` du manifeste** (même famille que la validation des ids) : n'accepter que `chapitres/<nom>.md` ; un manifeste artisanal pourrait sinon viser `project.json` à l'intérieur de la racine. Premier point de 0b.
+2. `useExport.exportPdf` : `JSON.parse` non gardé sur le document en mémoire (le DOCX saute le chapitre, le PDF échoue en bloc). Avertir quand un chapitre illisible est exclu d'un export.
+3. Codec, cas non modélisés par le corpus : `heading` contenant un `hardBreak` ; paragraphe se terminant par un `hardBreak` ; backslash littéral en fin de ligne dans un fichier externe ; une seule ligne blanche tolérée entre deux items de liste ; tabulations comme indentation de continuation.
+4. `projection.ts` : les paragraphes vides à l'intérieur d'une citation ou d'un item sont retirés par l'oracle alors que le round-trip réel les conserve (sur-déclaration de perte, test seulement).
+5. Test direct de `resolveChapterDoc` pour la raison `invalid-doc`.
+6. Instantanés `getState()` dans `EditorArea` (bandeau, garde de parité) : style préexistant du fichier.
+7. Vérification visuelle dans l'app (non réalisable par les agents) : ouvrir une **copie** de Savana, chapitre 5 = 20 paragraphes, taper, ⌘S, rouvrir sans notification, 103 sidecars ; `chmod 000` sur un chapitre → triangle dans la TDM, bandeau, lecture seule, fichier intact après sauvegarde.
