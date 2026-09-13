@@ -67,6 +67,11 @@ export const CODEC_CORPUS: CorpusEntry[] = [
   { name: 'escapable characters in prose', markdownExact: true, doc: doc(title('E'),
     para('left', t('2 * 3 = 6, a_b, c\\d, `tick`, ~~non~~, ==non==, <u>non</u>, # pas titre')),
     para('left', t('+ pas puce')), para('left', t('* pas puce')), para('left', t('7. pas liste')), para('left', t('> pas citation')), para('left', t('---'))) },
+  // Spec 4.3: trailing spaces are a deliberate loss of the .md (the sidecar keeps them),
+  // but only at the end of a line: inside a mark they survive the round-trip.
+  { name: 'trailing spaces at the end of a paragraph', markdownExact: false, doc: doc(title('TS'),
+    para('left', t('Fin de ligne.   ')),
+    para('left', t('intacts '), t('au milieu', [{ type: 'bold' }]))) },
   { name: 'french dialogue dashes', markdownExact: true, doc: doc(title('D'),
     para('left', t('- Bonjour, dit-il.')), para('left', t('- Bonsoir.')), para('left', t('\u2014 Cadratin aussi.'))) },
   { name: 'unknown node and unknown mark', markdownExact: false, doc: doc(title('U'),

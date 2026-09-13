@@ -36,6 +36,21 @@ function projectInline(nodes: TipTapNode[] | undefined): TipTapNode[] {
   return out
 }
 
+/**
+ * Spec 4.3: spaces at the end of a written line are lost. That only reaches the
+ * last inline node of a paragraph, and only when it carries no mark (a mark closes
+ * the line with its delimiter, so spaces inside it survive).
+ */
+function stripTrailingSpaces(content: TipTapNode[]): TipTapNode[] {
+  const last = content[content.length - 1]
+  if (!last || last.type !== 'text' || last.marks) return content
+  const text = (last.text ?? '').replace(/\s+$/, '')
+  if (text === last.text) return content
+  const out = content.slice(0, -1)
+  if (text) out.push({ type: 'text', text })
+  return out
+}
+
 function sameMarks(a: TipTapNode, b: TipTapNode): boolean {
   return JSON.stringify(a.marks ?? []) === JSON.stringify(b.marks ?? [])
 }
@@ -48,7 +63,7 @@ function projectBlocks(nodes: TipTapNode[]): TipTapNode[] {
         break
       case 'paragraph':
       case 'firstParagraph': {
-        const content = projectInline(n.content)
+        const content = stripTrailingSpaces(projectInline(n.content))
         if (content.length) out.push({ type: 'paragraph', content })
         break
       }
@@ -80,7 +95,7 @@ function projectBlocks(nodes: TipTapNode[]): TipTapNode[] {
         break
       default: {
         // Unknown block → its text as one paragraph (serializer fallback)
-        const text = inlineTextOf(n)
+        const text = inlineTextOf(n).replace(/\s+$/, '')
         if (text) out.push({ type: 'paragraph', content: [{ type: 'text', text }] })
       }
     }

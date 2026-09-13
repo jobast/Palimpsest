@@ -174,6 +174,11 @@ function escapeLeading(line: string): string {
     .replace(/^(\s*)(---+)$/, '$1\\$2')
 }
 
+/** One written line: block openers escaped, trailing spaces dropped. */
+function writeLine(line: string): string {
+  return escapeLeading(line).replace(/\s+$/, '')
+}
+
 function inlineTextOf(node: TipTapNode): string {
   if (node.type === 'text') return node.text ?? ''
   return (node.content ?? []).map(inlineTextOf).join('')
@@ -213,8 +218,9 @@ function serializeBlock(node: TipTapNode): string | null {
     case 'paragraph':
     case 'firstParagraph':
       // Every physical line matters: a hard break starts a new one, and that line
-      // must be escaped too or it would read back as a block of its own.
-      return serializeInline(node.content).split('\n').map(escapeLeading).join('\n')
+      // must be escaped too or it would read back as a block of its own. Trailing
+      // spaces are dropped (spec 4.3): the reader strips them anyway, the sidecar keeps them.
+      return serializeInline(node.content).split('\n').map(writeLine).join('\n')
     case 'codeBlock': {
       const lang = typeof node.attrs?.language === 'string' ? node.attrs.language : ''
       const text = inlineTextOf(node)
@@ -233,7 +239,7 @@ function serializeBlock(node: TipTapNode): string | null {
     }
     default:
       // Anti-loss fallback for unknown nodes: keep their text readable.
-      return escapeLeading(inlineTextOf(node))
+      return writeLine(inlineTextOf(node))
   }
 }
 
