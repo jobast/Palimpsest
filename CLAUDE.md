@@ -43,6 +43,7 @@ src/
 - `chapitres/NNN-slug.md` : Markdown étendu, projection lisible (agents, grep, diffs). Personne ne l'édite à la main.
 - `chapitres/.palim/<id>.json` : sidecar `{ version, mdHash, savedAt, doc }` = document TipTap exact, **fait foi** si `mdHash` = SHA-256 du `.md`. Sinon on parse le `.md` (projets anciens, fichier modifié par un tiers) et l'app le signale.
 - Dialecte Markdown (`src/shared/markdown/body.ts`) : `\n` simple = nouveau paragraphe ; `- ` en début de ligne = dialogue (jamais une liste) ; puces `+ ` ; `* * *` = pause de scène ; `---` = règle ; `\` fin de ligne = retour forcé ; marks `**` `*` `~~` `` ` `` `<u>` `==`. `textAlign` et la couleur de surlignage ne vivent que dans le sidecar.
+- `chapitres/.palim/` fait partie du projet : jamais ignoré, purgé ni exclu d'une copie ou d'une sauvegarde.
 - Un chapitre dont le fichier est illisible reste listé (`loadState: 'unreadable'`), affiché vide et en lecture seule, jamais réécrit ni supprimé.
 - Invariant testé : tout nœud/mark enregistré dans l'éditeur (`schemaNames.ts`) est connu du codec ; `parse(serialize(doc))` égale `projectMarkdown(doc)` sur le corpus `__fixtures__/codecCorpus.ts`.
 

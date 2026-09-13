@@ -362,8 +362,10 @@ const loadManuscriptFromDisk = async (
       unreadable += 1
       continue
     }
-    const fileResult = await window.electronAPI.readFile(`${projectPath}/${ref.file}`)
-    const sidecarResult = await window.electronAPI.readFile(`${projectPath}/${sidecarPath(ref.id)}`)
+    const [fileResult, sidecarResult] = await Promise.all([
+      window.electronAPI.readFile(`${projectPath}/${ref.file}`),
+      window.electronAPI.readFile(`${projectPath}/${sidecarPath(ref.id)}`)
+    ])
     const resolved = await resolveChapterDoc({
       md: fileResult.success && typeof fileResult.content === 'string' ? fileResult.content : null,
       sidecarText: sidecarResult.success && typeof sidecarResult.content === 'string' ? sidecarResult.content : null,
@@ -372,7 +374,8 @@ const loadManuscriptFromDisk = async (
     })
 
     if (resolved.loadState === 'unreadable' || !resolved.frontmatter || !resolved.doc) {
-      console.error(`[projet] chapitre illisible: ${ref.file}`, fileResult.error)
+      if (fileResult.error !== undefined) console.error(`[projet] chapitre illisible: ${ref.file}`, fileResult.error)
+      else console.error(`[projet] chapitre illisible: ${ref.file}`)
       items.push({ id: ref.id, type: 'chapter', title: fallbackTitle, status: 'draft', wordCount: 0, children: [], loadState: 'unreadable' })
       unreadable += 1
       continue
