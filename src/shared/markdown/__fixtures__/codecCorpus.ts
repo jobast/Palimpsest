@@ -56,7 +56,7 @@ export const CODEC_CORPUS: CorpusEntry[] = [
     para('left', t('2 * 3 = 6, a_b, c\\d, `tick`, ~~non~~, ==non==, <u>non</u>, # pas titre')),
     para('left', t('+ pas puce')), para('left', t('* pas puce')), para('left', t('7. pas liste')), para('left', t('> pas citation')), para('left', t('---'))) },
   { name: 'french dialogue dashes', markdownExact: true, doc: doc(title('D'),
-    para('left', t('- Bonjour, dit-il.')), para('left', t('- Bonsoir.')), para('left', t('— Cadratin aussi.'))) },
+    para('left', t('- Bonjour, dit-il.')), para('left', t('- Bonsoir.')), para('left', t('\u2014 Cadratin aussi.'))) },
   { name: 'unknown node and unknown mark', markdownExact: false, doc: doc(title('U'),
     { type: 'callout', attrs: { kind: 'note' }, content: [para('left', t('texte du callout'))] },
     para('left', t('mot', [{ type: 'subscript' }]), t(' normal'))) },
