@@ -21,6 +21,7 @@ import { SheetEditor } from './SheetEditor'
 import { ReportViewer } from './ReportViewer'
 import { NoteEditor } from './NoteEditor'
 import type { ManuscriptItem } from '@shared/types/project'
+import { CODEC_SUPPORTED_NAMES, NON_CONTENT_SCHEMA_NAMES } from '@shared/markdown'
 
 // Helper to find a manuscript item by ID (recursive)
 function findManuscriptItem(items: ManuscriptItem[], id: string): ManuscriptItem | null {
@@ -148,6 +149,30 @@ export function EditorArea() {
       }, 300) // 300ms debounce
     }
   })
+
+  // Model → on-page chapter title (guarded against feedback loop)
+  const activeItem = project ? findManuscriptItem(project.manuscript.items, activeDocumentId ?? '') : null
+
+  // Schema/codec parity guard: any node or mark the editor knows but the codec does not
+  // would be lost in the .md projection. The sidecar keeps it, but we want to know.
+  useEffect(() => {
+    if (!editor) return
+    const names = [...Object.keys(editor.schema.nodes), ...Object.keys(editor.schema.marks)]
+    const unknown = names.filter(n => !CODEC_SUPPORTED_NAMES.has(n) && !NON_CONTENT_SCHEMA_NAMES.has(n))
+    if (unknown.length > 0) {
+      console.error(`[codec] nœuds/marks du schéma inconnus du codec Markdown : ${unknown.join(', ')}`)
+      if (import.meta.env.DEV) {
+        useStatsStore.getState().showNotification('error', `Codec incomplet : ${unknown.join(', ')}`)
+      }
+    }
+  }, [editor])
+
+  // An unreadable chapter is shown empty and read-only: we never overwrite a file we could not read.
+  const isUnreadable = activeItem?.loadState === 'unreadable'
+  useEffect(() => {
+    if (!editor) return
+    editor.setEditable(!isUnreadable)
+  }, [editor, isUnreadable])
 
   // Register editor in store
   useEffect(() => {
@@ -312,8 +337,6 @@ export function EditorArea() {
     editor.view.dispatch(tr)
   }, [editor, analysisResult, activeMode, selectedIssueId])
 
-  // Model → on-page chapter title (guarded against feedback loop)
-  const activeItem = project ? findManuscriptItem(project.manuscript.items, activeDocumentId ?? '') : null
   const activeTitle = activeItem?.title
   useEffect(() => {
     if (!editor || !activeDocumentId || activeTitle === undefined) return
@@ -358,8 +381,17 @@ export function EditorArea() {
     )
   }
 
+  const unreadableFile = isUnreadable
+    ? useProjectStore.getState().chapterRefs.find(r => r.id === activeDocumentId)?.file
+    : undefined
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
+      {isUnreadable && (
+        <div role="alert" className="px-4 py-2 text-sm bg-destructive/10 text-destructive border-b border-destructive/30">
+          Fichier illisible : {unreadableFile ?? 'chapitre inconnu'}. Le chapitre est affiché vide et en lecture seule ; son fichier ne sera ni réécrit ni supprimé.
+        </div>
+      )}
       <PagedEditor />
     </div>
   )

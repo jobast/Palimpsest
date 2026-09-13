@@ -24,7 +24,8 @@ import {
   FileCheck,
   Map,
   Bot,
-  Sparkles
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { countSections } from '@shared/markdown'
@@ -276,7 +277,10 @@ function ManuscriptTreeItem({
             ) : (
               <span className="truncate flex-1 text-left">{item.title}</span>
             )}
-            {!isRenaming && (
+            {!isRenaming && item.loadState === 'unreadable' && (
+              <AlertTriangle size={12} className="text-destructive shrink-0" aria-label="Fichier illisible" />
+            )}
+            {!isRenaming && item.loadState !== 'unreadable' && (
               <>
                 {statusIcons[item.status]}
                 <span className="text-xs text-muted-foreground">{item.wordCount}</span>
