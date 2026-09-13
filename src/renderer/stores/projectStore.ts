@@ -13,7 +13,7 @@ import type {
   DailyStats,
   StatsData
 } from '@shared/types/project'
-import { parseChapter, serializeChapter, planChapterFiles, orphanFiles, type ChapterRef } from '@shared/markdown'
+import { serializeChapter, planChapterFiles, orphanFiles, resolveChapterDoc, sidecarPath, type ChapterRef } from '@shared/markdown'
 import type { TipTapDoc } from '@shared/markdown'
 import { aggregateDailyStats } from '@/lib/stats/aggregations'
 import { calculateStreak } from '@/lib/stats/calculations'
@@ -338,32 +338,58 @@ interface LoadedManuscript {
   chapterRefs: ChapterRef[]                  // for stable filenames on save
 }
 
-// Read the manifest's chapter list + each chapitres/*.md into the in-memory model.
+// Read the manifest's chapter list + each chapitres/*.md (and its sidecar) into the in-memory model.
+// Never drops a chapter: an unreadable file yields an 'unreadable' item that is never rewritten.
 const loadManuscriptFromDisk = async (
   projectPath: string,
   chapterRefs: ChapterRef[]
 ): Promise<LoadedManuscript> => {
   const items: ManuscriptItem[] = []
   const documentContents: Record<string, string> = {}
+  let recoveredFromMarkdown = 0
+  let unreadable = 0
 
   for (const ref of chapterRefs) {
-    const fileResult = await window.electronAPI.readFile(`${projectPath}/${ref.file}`)
-    if (!fileResult.success || !fileResult.content) continue
     const fallbackTitle = ref.file.replace(/^chapitres\//, '').replace(/\.md$/, '')
-    const { frontmatter, doc } = parseChapter(fileResult.content, fallbackTitle)
-    const id = frontmatter.id || ref.id
+    const fileResult = await window.electronAPI.readFile(`${projectPath}/${ref.file}`)
+    const sidecarResult = await window.electronAPI.readFile(`${projectPath}/${sidecarPath(ref.id)}`)
+    const resolved = await resolveChapterDoc({
+      md: fileResult.success && typeof fileResult.content === 'string' ? fileResult.content : null,
+      sidecarText: sidecarResult.success && typeof sidecarResult.content === 'string' ? sidecarResult.content : null,
+      refId: ref.id,
+      fallbackTitle
+    })
+
+    if (resolved.loadState === 'unreadable' || !resolved.frontmatter || !resolved.doc) {
+      console.error(`[projet] chapitre illisible: ${ref.file}`, fileResult.error)
+      items.push({ id: ref.id, type: 'chapter', title: fallbackTitle, status: 'draft', wordCount: 0, children: [], loadState: 'unreadable' })
+      unreadable += 1
+      continue
+    }
+
+    if (resolved.loadState === 'fromMarkdown') {
+      console.info(`[projet] ${ref.file} chargé depuis le Markdown (${resolved.reason})`)
+      if (resolved.reason !== 'no-sidecar') recoveredFromMarkdown += 1
+    }
+
+    const { frontmatter, doc } = resolved
     items.push({
-      id,
+      id: ref.id,
       type: 'chapter',
       title: frontmatter.title,
       status: frontmatter.status ?? 'draft',
       synopsis: frontmatter.synopsis,
       pov: frontmatter.pov,
       wordCount: 0,            // recomputed by the editor/stats, never persisted
-      children: []
+      children: [],
+      loadState: resolved.loadState
     })
-    documentContents[id] = JSON.stringify(doc)
+    documentContents[ref.id] = JSON.stringify(doc)
   }
+
+  const notify = useStatsStore.getState().showNotification
+  if (unreadable > 0) notify('error', `${unreadable} chapitre(s) illisible(s) : voir la table des matières`)
+  if (recoveredFromMarkdown > 0) notify('info', `${recoveredFromMarkdown} chapitre(s) rechargé(s) depuis le Markdown`)
 
   return { items, documentContents, chapterRefs }
 }
