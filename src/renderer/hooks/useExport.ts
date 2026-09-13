@@ -9,6 +9,23 @@ import { downloadPdf } from '@/lib/export/pdfExporter'
 import { flattenChapterIds } from '@shared/manuscript/order'
 import { docToPrintHtml, buildBookHtml, buildPrintHeaderFooter } from '@shared/export/printHtml'
 import type { TipTapDoc } from '@shared/markdown'
+import type { Editor } from '@tiptap/react'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+
+/**
+ * One chapter as a ProseMirror node, or null when its document cannot be built
+ * (unreadable chapter, content the schema rejects): the export skips it rather
+ * than failing whole.
+ */
+function chapterNode(editor: Editor, id: string, json: string | undefined): ProseMirrorNode | null {
+  if (!json) return null
+  try {
+    return editor.schema.nodeFromJSON(JSON.parse(json))
+  } catch (error) {
+    console.error('[export] chapitre ignoré, document illisible:', id, error)
+    return null
+  }
+}
 
 export interface ExportState {
   isExporting: boolean
@@ -45,9 +62,8 @@ export function useExport() {
       useEditorStore.getState().flushCurrentDocument(useProjectStore.getState().activeDocumentId)
       const { documentContents } = useEditorStore.getState()
       const chapterDocs = flattenChapterIds(project.manuscript.items)
-        .map(id => documentContents.get(id))
-        .filter((c): c is string => !!c)
-        .map(json => editor.schema.nodeFromJSON(JSON.parse(json)))
+        .map(id => chapterNode(editor, id, documentContents.get(id)))
+        .filter((node): node is ProseMirrorNode => node !== null)
 
       if (chapterDocs.length === 0) {
         setState({ isExporting: false, progress: 0, format: null, error: 'Rien à exporter' })

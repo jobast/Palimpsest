@@ -34,6 +34,8 @@ export interface ManuscriptItem {
   pov?: string
   location?: string
   wordCount: number
+  /** Where the document came from at load time (not persisted). 'unreadable' = never rewrite, never delete. */
+  loadState?: 'exact' | 'fromMarkdown' | 'unreadable'
 }
 
 export interface ManuscriptStructure {

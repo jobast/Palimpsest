@@ -13,7 +13,8 @@ import type {
   DailyStats,
   StatsData
 } from '@shared/types/project'
-import { parseChapter, serializeChapter, planChapterFiles, orphanFiles, type ChapterRef } from '@shared/markdown'
+import { serializeChapter, planChapterFiles, orphanFiles, resolveChapterDoc, sidecarPath, isSafeChapterId, stringifySidecar, sha256Hex, SIDECAR_DIR, type ChapterRef } from '@shared/markdown'
+import { defaultChapterDoc, duplicateItem, markItemUnreadable, planChapterSave } from '@shared/manuscript/chapterOps'
 import type { TipTapDoc } from '@shared/markdown'
 import { aggregateDailyStats } from '@/lib/stats/aggregations'
 import { calculateStreak } from '@/lib/stats/calculations'
@@ -129,6 +130,8 @@ interface ProjectState {
   renameChapter: (id: string, title: string) => void
   deleteManuscriptItem: (id: string) => void
   duplicateManuscriptItem: (id: string) => void
+  /** The editor could not load this chapter: read-only, never rewritten. Not a user edit. */
+  markChapterUnreadable: (id: string) => void
   reorderManuscriptItems: (items: ManuscriptItem[]) => void
 
   // Sheet actions
@@ -338,32 +341,69 @@ interface LoadedManuscript {
   chapterRefs: ChapterRef[]                  // for stable filenames on save
 }
 
-// Read the manifest's chapter list + each chapitres/*.md into the in-memory model.
+// Read the manifest's chapter list + each chapitres/*.md (and its sidecar) into the in-memory model.
+// Never drops a chapter: an unreadable file yields an 'unreadable' item that is never rewritten.
 const loadManuscriptFromDisk = async (
   projectPath: string,
   chapterRefs: ChapterRef[]
 ): Promise<LoadedManuscript> => {
   const items: ManuscriptItem[] = []
   const documentContents: Record<string, string> = {}
+  let recoveredFromMarkdown = 0
+  let unreadable = 0
 
   for (const ref of chapterRefs) {
-    const fileResult = await window.electronAPI.readFile(`${projectPath}/${ref.file}`)
-    if (!fileResult.success || !fileResult.content) continue
     const fallbackTitle = ref.file.replace(/^chapitres\//, '').replace(/\.md$/, '')
-    const { frontmatter, doc } = parseChapter(fileResult.content, fallbackTitle)
-    const id = frontmatter.id || ref.id
+    // An id that is not a plain token must never become a path: the chapter is kept
+    // as unreadable, so it is neither read via its sidecar nor rewritten.
+    if (!isSafeChapterId(ref.id)) {
+      console.error(`[projet] identifiant de chapitre invalide, chapitre en lecture seule: ${ref.id}`)
+      items.push({ id: ref.id, type: 'chapter', title: fallbackTitle, status: 'draft', wordCount: 0, children: [], loadState: 'unreadable' })
+      unreadable += 1
+      continue
+    }
+    const [fileResult, sidecarResult] = await Promise.all([
+      window.electronAPI.readFile(`${projectPath}/${ref.file}`),
+      window.electronAPI.readFile(`${projectPath}/${sidecarPath(ref.id)}`)
+    ])
+    const resolved = await resolveChapterDoc({
+      md: fileResult.success && typeof fileResult.content === 'string' ? fileResult.content : null,
+      sidecarText: sidecarResult.success && typeof sidecarResult.content === 'string' ? sidecarResult.content : null,
+      refId: ref.id,
+      fallbackTitle
+    })
+
+    if (resolved.loadState === 'unreadable' || !resolved.frontmatter || !resolved.doc) {
+      if (fileResult.error !== undefined) console.error(`[projet] chapitre illisible: ${ref.file}`, fileResult.error)
+      else console.error(`[projet] chapitre illisible: ${ref.file}`)
+      items.push({ id: ref.id, type: 'chapter', title: fallbackTitle, status: 'draft', wordCount: 0, children: [], loadState: 'unreadable' })
+      unreadable += 1
+      continue
+    }
+
+    if (resolved.loadState === 'fromMarkdown') {
+      console.info(`[projet] ${ref.file} chargé depuis le Markdown (${resolved.reason})`)
+      if (resolved.reason !== 'no-sidecar') recoveredFromMarkdown += 1
+    }
+
+    const { frontmatter, doc } = resolved
     items.push({
-      id,
+      id: ref.id,
       type: 'chapter',
       title: frontmatter.title,
       status: frontmatter.status ?? 'draft',
       synopsis: frontmatter.synopsis,
       pov: frontmatter.pov,
       wordCount: 0,            // recomputed by the editor/stats, never persisted
-      children: []
+      children: [],
+      loadState: resolved.loadState
     })
-    documentContents[id] = JSON.stringify(doc)
+    documentContents[ref.id] = JSON.stringify(doc)
   }
+
+  const notify = useStatsStore.getState().showNotification
+  if (unreadable > 0) notify('error', `${unreadable} chapitre(s) illisible(s) : voir la table des matières`)
+  if (recoveredFromMarkdown > 0) notify('info', `${recoveredFromMarkdown} chapitre(s) rechargé(s) depuis le Markdown`)
 
   return { items, documentContents, chapterRefs }
 }
@@ -618,13 +658,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const { project, chapterRefs } = get()
     if (!project) return
 
-    // Deep clone function for manuscript items
-    const cloneItem = (item: ManuscriptItem): ManuscriptItem => ({
-      ...item,
-      id: crypto.randomUUID(),
-      title: `${item.title} (copie)`,
-      children: item.children ? item.children.map(cloneItem) : undefined
-    })
+    // Content of every cloned chapter, so a duplicate is not born empty.
+    const editorStore = useEditorStore.getState()
+    const copyContents = (clone: ManuscriptItem, pairs: Array<{ from: string; to: string }>) => {
+      const titles = new Map<string, string>()
+      const collect = (node: ManuscriptItem) => {
+        titles.set(node.id, node.title)
+        for (const child of node.children ?? []) collect(child)
+      }
+      collect(clone)
+      for (const { from, to } of pairs) {
+        const json = editorStore.documentContents.get(from)
+        // An unreadable source holds no content in memory: the clone starts on the default document.
+        editorStore.setDocumentContent(to, json ?? JSON.stringify(defaultChapterDoc(titles.get(to) ?? '')))
+      }
+    }
 
     // Find and duplicate item
     const duplicateInItems = (items: ManuscriptItem[]): ManuscriptItem[] => {
@@ -632,7 +680,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       for (const item of items) {
         result.push(item)
         if (item.id === id) {
-          result.push(cloneItem(item))
+          const { clone, idPairs } = duplicateItem(item, () => crypto.randomUUID())
+          copyContents(clone, idPairs)
+          result.push(clone)
         } else if (item.children) {
           // Check if item to duplicate is in children
           const newChildren = duplicateInItems(item.children)
@@ -655,6 +705,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Assign a stable file ref to the duplicated chapter immediately.
       chapterRefs: planChapterFiles(newItems.map(i => ({ id: i.id, title: i.title })), chapterRefs),
       isDirty: true, lastDirtyAt: Date.now()
+    })
+  },
+
+  // Load failure in the editor: the chapter becomes read-only and is never rewritten.
+  // Not a user edit, so isDirty is left alone.
+  markChapterUnreadable: (id) => {
+    const { project } = get()
+    if (!project) return
+    set({
+      project: {
+        ...project,
+        manuscript: { items: markItemUnreadable(project.manuscript.items, id) }
+      }
     })
   },
 
@@ -902,6 +965,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Create project directory structure
       await ensureCreateDirectory(projectPath)
       await ensureCreateDirectory(`${projectPath}/chapitres`)
+      await ensureCreateDirectory(`${projectPath}/${SIDECAR_DIR}`)
       await ensureCreateDirectory(`${projectPath}/sheets`)
       await ensureCreateDirectory(`${projectPath}/stats`)
       await ensureCreateDirectory(`${projectPath}/reports`)
@@ -915,17 +979,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       )
       for (const ref of initialRefs) {
         const item = project.manuscript.items.find(i => i.id === ref.id)!
+        const initialDoc: TipTapDoc = {
+          type: 'doc',
+          content: [
+            { type: 'chapterTitle', content: [{ type: 'text', text: item.title }] },
+            { type: 'firstParagraph', content: [] }
+          ]
+        }
         const md = serializeChapter({
           frontmatter: { id: item.id, title: item.title, status: item.status },
-          doc: {
-            type: 'doc',
-            content: [
-              { type: 'chapterTitle', content: [{ type: 'text', text: item.title }] },
-              { type: 'firstParagraph', content: [] }
-            ]
-          }
+          doc: initialDoc
         })
         await ensureWriteFile(`${projectPath}/${ref.file}`, md)
+        await ensureWriteFile(
+          `${projectPath}/${sidecarPath(ref.id)}`,
+          stringifySidecar({ version: 1, mdHash: await sha256Hex(md), savedAt: new Date().toISOString(), doc: initialDoc })
+        )
       }
 
       // Write project manifest (meta + chapter refs)
@@ -1186,13 +1255,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const refById = new Map(newRefs.map(r => [r.id, r.file]))
       const docContents = useEditorStore.getState().getAllDocumentContents()
 
+      await ensureCreateDirectory(`${projectPath}/${SIDECAR_DIR}`)
       for (const item of items) {
         const file = refById.get(item.id)
         if (!file) continue
-        const json = docContents.get(item.id)
-        const doc: TipTapDoc = json
-          ? (JSON.parse(json) as TipTapDoc)
-          : { type: 'doc', content: [{ type: 'chapterTitle', content: [{ type: 'text', text: item.title }] }] }
+        // An unsafe id is unreadable too (loadManuscriptFromDisk marked it as such).
+        if (!isSafeChapterId(item.id)) continue
+        // A chapter we could not read, or whose content is not in memory, is never
+        // rewritten: writing the default document would wipe its body on disk.
+        const plan = planChapterSave(item, docContents.get(item.id))
+        if (plan.action === 'skip') {
+          if (plan.reason !== 'unreadable') {
+            console.error(`[projet] contenu ${plan.reason === 'no-content' ? 'absent' : 'illisible'} en mémoire, chapitre non réécrit: ${file}`)
+          }
+          continue
+        }
+        const doc: TipTapDoc = plan.doc
         const md = serializeChapter({
           frontmatter: {
             id: item.id,
@@ -1203,12 +1281,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           },
           doc
         })
+        // .md first, then the sidecar: an interruption in between leaves a stale hash,
+        // so the next load falls back to the fresh .md rather than an old doc.
         await ensureWriteFile(`${projectPath}/${file}`, md)
+        await ensureWriteFile(
+          `${projectPath}/${sidecarPath(item.id)}`,
+          stringifySidecar({ version: 1, mdHash: await sha256Hex(md), savedAt: new Date().toISOString(), doc })
+        )
       }
 
-      // Delete .md files for removed chapters (journal-aware).
+      // Delete .md files and sidecars for removed chapters (journal-aware).
+      const keptIds = new Set(newRefs.map(r => r.id))
       for (const orphan of orphanFiles(get().chapterRefs, newRefs)) {
         await window.electronAPI.deleteFile(`${projectPath}/${orphan}`)
+      }
+      for (const ref of get().chapterRefs) {
+        if (!keptIds.has(ref.id) && isSafeChapterId(ref.id)) await window.electronAPI.deleteFile(`${projectPath}/${sidecarPath(ref.id)}`)
       }
 
       // Manifest = meta + ordered chapter refs.
