@@ -14,6 +14,7 @@ import type {
   StatsData
 } from '@shared/types/project'
 import { serializeChapter, planChapterFiles, orphanFiles, resolveChapterDoc, sidecarPath, isSafeChapterId, stringifySidecar, sha256Hex, SIDECAR_DIR, type ChapterRef } from '@shared/markdown'
+import { defaultChapterDoc, duplicateItem, markItemUnreadable, planChapterSave } from '@shared/manuscript/chapterOps'
 import type { TipTapDoc } from '@shared/markdown'
 import { aggregateDailyStats } from '@/lib/stats/aggregations'
 import { calculateStreak } from '@/lib/stats/calculations'
@@ -129,6 +130,8 @@ interface ProjectState {
   renameChapter: (id: string, title: string) => void
   deleteManuscriptItem: (id: string) => void
   duplicateManuscriptItem: (id: string) => void
+  /** The editor could not load this chapter: read-only, never rewritten. Not a user edit. */
+  markChapterUnreadable: (id: string) => void
   reorderManuscriptItems: (items: ManuscriptItem[]) => void
 
   // Sheet actions
@@ -652,13 +655,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const { project, chapterRefs } = get()
     if (!project) return
 
-    // Deep clone function for manuscript items
-    const cloneItem = (item: ManuscriptItem): ManuscriptItem => ({
-      ...item,
-      id: crypto.randomUUID(),
-      title: `${item.title} (copie)`,
-      children: item.children ? item.children.map(cloneItem) : undefined
-    })
+    // Content of every cloned chapter, so a duplicate is not born empty.
+    const editorStore = useEditorStore.getState()
+    const copyContents = (clone: ManuscriptItem, pairs: Array<{ from: string; to: string }>) => {
+      const titles = new Map<string, string>()
+      const collect = (node: ManuscriptItem) => {
+        titles.set(node.id, node.title)
+        for (const child of node.children ?? []) collect(child)
+      }
+      collect(clone)
+      for (const { from, to } of pairs) {
+        const json = editorStore.documentContents.get(from)
+        // An unreadable source holds no content in memory: the clone starts on the default document.
+        editorStore.setDocumentContent(to, json ?? JSON.stringify(defaultChapterDoc(titles.get(to) ?? '')))
+      }
+    }
 
     // Find and duplicate item
     const duplicateInItems = (items: ManuscriptItem[]): ManuscriptItem[] => {
@@ -666,7 +677,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       for (const item of items) {
         result.push(item)
         if (item.id === id) {
-          result.push(cloneItem(item))
+          const { clone, idPairs } = duplicateItem(item, () => crypto.randomUUID())
+          copyContents(clone, idPairs)
+          result.push(clone)
         } else if (item.children) {
           // Check if item to duplicate is in children
           const newChildren = duplicateInItems(item.children)
@@ -689,6 +702,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Assign a stable file ref to the duplicated chapter immediately.
       chapterRefs: planChapterFiles(newItems.map(i => ({ id: i.id, title: i.title })), chapterRefs),
       isDirty: true, lastDirtyAt: Date.now()
+    })
+  },
+
+  // Load failure in the editor: the chapter becomes read-only and is never rewritten.
+  // Not a user edit, so isDirty is left alone.
+  markChapterUnreadable: (id) => {
+    const { project } = get()
+    if (!project) return
+    set({
+      project: {
+        ...project,
+        manuscript: { items: markItemUnreadable(project.manuscript.items, id) }
+      }
     })
   },
 
@@ -1230,13 +1256,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       for (const item of items) {
         const file = refById.get(item.id)
         if (!file) continue
-        // An unreadable chapter is never serialized: we do not hold its content.
         // An unsafe id is unreadable too (loadManuscriptFromDisk marked it as such).
-        if (item.loadState === 'unreadable' || !isSafeChapterId(item.id)) continue
-        const json = docContents.get(item.id)
-        const doc: TipTapDoc = json
-          ? (JSON.parse(json) as TipTapDoc)
-          : { type: 'doc', content: [{ type: 'chapterTitle', content: [{ type: 'text', text: item.title }] }] }
+        if (!isSafeChapterId(item.id)) continue
+        // A chapter we could not read, or whose content is not in memory, is never
+        // rewritten: writing the default document would wipe its body on disk.
+        const plan = planChapterSave(item, docContents.get(item.id))
+        if (plan.action === 'skip') {
+          if (plan.reason !== 'unreadable') {
+            console.error(`[projet] contenu ${plan.reason === 'no-content' ? 'absent' : 'illisible'} en mémoire, chapitre non réécrit: ${file}`)
+          }
+          continue
+        }
+        const doc: TipTapDoc = plan.doc
         const md = serializeChapter({
           frontmatter: {
             id: item.id,

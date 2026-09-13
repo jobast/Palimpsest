@@ -208,7 +208,11 @@ export function EditorArea() {
     if (savedContent) {
       try {
         editor.commands.setContent(JSON.parse(savedContent))
-      } catch {
+      } catch (error) {
+        // Never turn "chapitre illisible" into "chapitre vide": the next keystroke
+        // would save the empty document over the file. Read-only banner instead.
+        console.error('[éditeur] document illisible pour le chapitre', activeDocumentId, error)
+        useProjectStore.getState().markChapterUnreadable(activeDocumentId)
         editor.commands.setContent('')
       }
     } else {
