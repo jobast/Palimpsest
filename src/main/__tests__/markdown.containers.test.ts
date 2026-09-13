@@ -55,6 +55,26 @@ test('code block keeps language, raw content and blank lines', () => {
   assert.deepEqual(markdownBodyToContent('```\n```'), [{ type: 'codeBlock', attrs: { language: null } }])
 })
 
+test('an empty code block reads back without an empty text node', () => {
+  const md = docToMarkdownBody(doc({ type: 'codeBlock', attrs: { language: null } }))
+  assert.equal(md, '```\n\n```\n')
+  assert.deepEqual(markdownBodyToContent(md), [{ type: 'codeBlock', attrs: { language: null } }])
+  const withLang = docToMarkdownBody(doc({ type: 'codeBlock', attrs: { language: 'ts' } }))
+  assert.equal(withLang, '```ts\n\n```\n')
+  assert.deepEqual(markdownBodyToContent(withLang), [{ type: 'codeBlock', attrs: { language: 'ts' } }])
+})
+
+test('a code block containing a fence line is written with a longer fence', () => {
+  const code: TipTapNode = { type: 'codeBlock', attrs: { language: null }, content: [{ type: 'text', text: '```\nnon fermé' }] }
+  const md = docToMarkdownBody(doc(code))
+  assert.equal(md, '````\n```\nnon fermé\n````\n')
+  assert.deepEqual(markdownBodyToContent(md), [code])
+  // A longer fence is also accepted on read, and a shorter run inside stays content.
+  assert.deepEqual(markdownBodyToContent('`````js\na ``` b\n`````'), [
+    { type: 'codeBlock', attrs: { language: 'js' }, content: [{ type: 'text', text: 'a ``` b' }] }
+  ])
+})
+
 test('an unterminated fence swallows the rest of the body without throwing', () => {
   assert.deepEqual(markdownBodyToContent('```\nreste'), [{ type: 'codeBlock', attrs: { language: null }, content: [{ type: 'text', text: 'reste' }] }])
 })

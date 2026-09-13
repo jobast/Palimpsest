@@ -215,7 +215,11 @@ function serializeBlock(node: TipTapNode): string | null {
       return escapeLeading(serializeInline(node.content))
     case 'codeBlock': {
       const lang = typeof node.attrs?.language === 'string' ? node.attrs.language : ''
-      return '```' + lang + '\n' + inlineTextOf(node) + '\n```'
+      const text = inlineTextOf(node)
+      // CommonMark: the fence must be longer than the longest backtick run inside.
+      const longest = (text.match(/`+/g) ?? []).reduce((max, run) => Math.max(max, run.length), 0)
+      const fence = '`'.repeat(Math.max(3, longest + 1))
+      return fence + lang + '\n' + text + '\n' + fence
     }
     case 'blockquote':
       return quoteLines(serializeBlocks(node.content))
@@ -242,8 +246,8 @@ export function docToMarkdownBody(doc: TipTapDoc): string {
 const RE_SCENE = /^\* \* \*$/
 const RE_HR = /^---+$/
 const RE_HEADING = /^(#{1,6}) (.*)$/
-const RE_FENCE_OPEN = /^```([\w+-]*)\s*$/
-const RE_FENCE_CLOSE = /^```\s*$/
+const RE_FENCE_OPEN = /^(`{3,})([\w+-]*)\s*$/
+const RE_FENCE_CLOSE = /^(`{3,})\s*$/
 const RE_QUOTE = /^>( |$)/
 const RE_BULLET = /^([+*]) (.*)$/
 const RE_ORDERED = /^(\d+)\. (.*)$/
@@ -307,12 +311,19 @@ function parseBlocks(lines: string[]): TipTapNode[] {
     }
     const f = line.match(RE_FENCE_OPEN)
     if (f) {
+      const fenceLen = f[1].length
       const code: string[] = []
       i++
-      while (i < lines.length && !RE_FENCE_CLOSE.test(lines[i])) code.push(lines[i++])
+      while (i < lines.length) {
+        const close = lines[i].match(RE_FENCE_CLOSE)
+        if (close && close[1].length >= fenceLen) break
+        code.push(lines[i++])
+      }
       i++ // closing fence, or past the end if unterminated
-      const node: TipTapNode = { type: 'codeBlock', attrs: { language: f[1] || null } }
-      if (code.length) node.content = [{ type: 'text', text: code.join('\n') }]
+      const node: TipTapNode = { type: 'codeBlock', attrs: { language: f[2] || null } }
+      // An empty block must stay contentless: an empty text node is not a valid TipTap node.
+      const text = code.join('\n')
+      if (text) node.content = [{ type: 'text', text }]
       out.push(node)
       continue
     }
