@@ -36,6 +36,13 @@ test('a blank line between items keeps a single list', () => {
   assert.deepEqual(markdownBodyToContent('+ a\n\n+ b'), [{ type: 'bulletList', content: [li(p('a')), li(p('b'))] }])
 })
 
+test('a degenerate list or quote marker yields schema-valid nodes', () => {
+  const emptyPara: TipTapNode = { type: 'paragraph', content: [] }
+  assert.deepEqual(markdownBodyToContent('+ \n'), [{ type: 'bulletList', content: [li(emptyPara)] }])
+  assert.deepEqual(markdownBodyToContent('1. \n'), [{ type: 'orderedList', attrs: { start: 1 }, content: [li(emptyPara)] }])
+  assert.deepEqual(markdownBodyToContent('> \n'), [{ type: 'blockquote', content: [emptyPara] }])
+})
+
 test('blockquote with nested blocks round-trips', () => {
   const quote: TipTapNode = { type: 'blockquote', content: [
     p('Citation.'),

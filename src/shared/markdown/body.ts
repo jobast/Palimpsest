@@ -264,6 +264,15 @@ function leadingSpaces(line: string): number {
   return (line.match(/^ */) as RegExpMatchArray)[0].length
 }
 
+/**
+ * A container must never be empty: `listItem` needs `paragraph block*` and
+ * `blockquote` needs `block+`, so a degenerate marker ("+ ", "> ") gets an
+ * empty paragraph rather than an invalid node.
+ */
+function nonEmptyBlocks(blocks: TipTapNode[]): TipTapNode[] {
+  return blocks.length ? blocks : [{ type: 'paragraph', content: [] }]
+}
+
 function parseList(lines: string[], start: number): { node: TipTapNode; next: number } {
   const ordered = RE_ORDERED.test(lines[start])
   const re = ordered ? RE_ORDERED : RE_BULLET
@@ -288,7 +297,7 @@ function parseList(lines: string[], start: number): { node: TipTapNode; next: nu
       if (leadingSpaces(l) >= markerLen) { body.push(l.slice(markerLen)); i++; continue }
       break
     }
-    items.push({ type: 'listItem', content: parseBlocks(body) })
+    items.push({ type: 'listItem', content: nonEmptyBlocks(parseBlocks(body)) })
   }
   const node: TipTapNode = ordered
     ? { type: 'orderedList', attrs: { start: startNum }, content: items }
@@ -332,7 +341,7 @@ function parseBlocks(lines: string[]): TipTapNode[] {
     if (RE_QUOTE.test(line)) {
       const inner: string[] = []
       while (i < lines.length && RE_QUOTE.test(lines[i])) inner.push(lines[i++].replace(/^> ?/, ''))
-      out.push({ type: 'blockquote', content: parseBlocks(inner) })
+      out.push({ type: 'blockquote', content: nonEmptyBlocks(parseBlocks(inner)) })
       continue
     }
     if (RE_BULLET.test(line) || RE_ORDERED.test(line)) {
