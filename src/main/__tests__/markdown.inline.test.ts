@@ -51,6 +51,12 @@ test('parseInline honours escapes, including legacy \\- and \\.', () => {
   assert.deepEqual(parseInline('\\*pas italique\\*'), [t('*pas italique*')])
 })
 
+test('parseInline: a closer inside a code span does not close an outer mark', () => {
+  assert.deepEqual(parseInline('**bold `code**span` end**'), [
+    t('bold ', 'bold'), t('code**span', 'bold', 'code'), t(' end', 'bold')
+  ])
+})
+
 test('inline round-trip for marks and escapable characters', () => {
   // marks are given in canonical order (MARK_ORDER) so deepEqual can hold
   const nodes = [t('« '), t('Été', 'italic', 'bold'), t(' » 2*3 ~~x ==y `z` <u>w</u> \\ fin')]

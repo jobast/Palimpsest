@@ -40,16 +40,6 @@ function escapeInline(text: string): string {
     .replace(/<(\/?u)>/g, '\\<$1>')
 }
 
-function escapeLeading(line: string): string {
-  // Escape block markers only at the very start of a paragraph.
-  // Note: * is only a bullet when followed by a space; ** starts bold, so we
-  // match "* " (with trailing space) or use the [#+>-] set for the others.
-  return line
-    .replace(/^(\s*)([#>+-])/, '$1\\$2')
-    .replace(/^(\s*)(\* )/, '$1\\* ')
-    .replace(/^(\s*)(\d+)\./, '$1$2\\.')
-}
-
 function sortMarks(types: string[]): string[] {
   return Array.from(new Set(types))
     .filter(t => SUPPORTED_MARK_TYPES.has(t))
@@ -82,35 +72,6 @@ export function serializeInline(nodes: TipTapNode[] | undefined): string {
   return out
 }
 
-function serializeBlock(node: TipTapNode): string | null {
-  switch (node.type) {
-    case 'chapterTitle':
-      return null // title lives in frontmatter, never in the body
-    case 'sceneBreak':
-      return '* * *'
-    case 'heading': {
-      const level = Math.min(3, Math.max(1, Number(node.attrs?.level ?? 2)))
-      return `${'#'.repeat(level)} ${serializeInline(node.content)}`
-    }
-    case 'paragraph':
-    case 'firstParagraph':
-      return escapeLeading(serializeInline(node.content))
-    default:
-      // Anti-loss fallback for unexpected nodes.
-      return escapeLeading(serializeInline(node.content))
-  }
-}
-
-/** doc JSON → markdown body (no frontmatter, no chapter title). */
-export function docToMarkdownBody(doc: TipTapDoc): string {
-  const blocks: string[] = []
-  for (const node of doc.content ?? []) {
-    const block = serializeBlock(node)
-    if (block !== null) blocks.push(block)
-  }
-  return blocks.length ? blocks.join('\n\n') + '\n' : ''
-}
-
 // --- Inline parsing -----------------------------------------------------------
 
 /** Index of the next unescaped `delim` at or after `from`, or -1. */
@@ -118,6 +79,10 @@ function findClose(line: string, from: number, delim: string): number {
   let i = from
   while (i < line.length) {
     if (line[i] === '\\') { i += 2; continue }
+    if (line[i] === '`') {
+      const close = line.indexOf('`', i + 1)
+      if (close !== -1) { i = close + 1; continue }
+    }
     if (line.startsWith(delim, i)) return i
     i++
   }
@@ -186,36 +151,213 @@ export function parseInline(line: string): TipTapNode[] {
   return out
 }
 
-function parseBlock(raw: string): TipTapNode | null {
-  const block = raw.replace(/^\n+|\n+$/g, '')
-  if (!block) return null
-  if (/^\*\s\*\s\*$/.test(block.trim())) return { type: 'sceneBreak' }
-  const heading = block.match(/^(#{1,3})\s+(.*)$/)
-  if (heading) {
-    return { type: 'heading', attrs: { level: heading[1].length }, content: parseInline(heading[2]) }
+// --- Supported blocks ---------------------------------------------------------
+
+export const SUPPORTED_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  'paragraph', 'firstParagraph', 'heading', 'sceneBreak', 'chapterTitle', 'horizontalRule',
+  'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'hardBreak', 'text'
+])
+
+// --- Block serialization ------------------------------------------------------
+
+/**
+ * Escape block openers at the very start of a paragraph. `-` is deliberately
+ * NOT escaped: a leading dash is French dialogue, and the reader never treats
+ * `- ` as a list (see parseBlocks).
+ */
+function escapeLeading(line: string): string {
+  return line
+    .replace(/^(\s*)([#>+])/, '$1\\$2')
+    .replace(/^(\s*)(\* )/, '$1\\* ')
+    .replace(/^(\s*)(\d+)\. /, '$1$2\\. ')
+    .replace(/^(\s*)(```)/, '$1\\```')
+    .replace(/^(\s*)(---+)$/, '$1\\$2')
+}
+
+function inlineTextOf(node: TipTapNode): string {
+  if (node.type === 'text') return node.text ?? ''
+  return (node.content ?? []).map(inlineTextOf).join('')
+}
+
+function quoteLines(text: string): string {
+  return text.split('\n').map(l => (l ? `> ${l}` : '>')).join('\n')
+}
+
+function serializeListItem(item: TipTapNode, marker: string): string {
+  const body = serializeBlocks(item.content)
+  const pad = ' '.repeat(marker.length)
+  return body.split('\n').map((l, i) => (i === 0 ? marker + l : l ? pad + l : '')).join('\n')
+}
+
+function serializeBlocks(nodes: TipTapNode[] | undefined): string {
+  const blocks: string[] = []
+  for (const node of nodes ?? []) {
+    const block = serializeBlock(node)
+    if (block !== null && block !== '') blocks.push(block)
   }
-  // Join soft-wrapped lines; CommonMark hard break (two trailing spaces) → hardBreak.
-  const lines = block.split('\n')
-  const content: TipTapNode[] = []
-  lines.forEach((line, i) => {
-    const hard = /  $/.test(line)
-    content.push(...parseInline(line.replace(/\s+$/, '')))
-    if (i < lines.length - 1) content.push(hard ? { type: 'hardBreak' } : { type: 'text', text: ' ' })
-  })
-  return { type: 'paragraph', content }
+  return blocks.join('\n\n')
+}
+
+function serializeBlock(node: TipTapNode): string | null {
+  switch (node.type) {
+    case 'chapterTitle':
+      return null // title lives in frontmatter, never in the body
+    case 'sceneBreak':
+      return '* * *'
+    case 'horizontalRule':
+      return '---'
+    case 'heading': {
+      const level = Math.min(3, Math.max(1, Number(node.attrs?.level ?? 2)))
+      return `${'#'.repeat(level)} ${serializeInline(node.content)}`
+    }
+    case 'paragraph':
+    case 'firstParagraph':
+      return escapeLeading(serializeInline(node.content))
+    case 'codeBlock': {
+      const lang = typeof node.attrs?.language === 'string' ? node.attrs.language : ''
+      return '```' + lang + '\n' + inlineTextOf(node) + '\n```'
+    }
+    case 'blockquote':
+      return quoteLines(serializeBlocks(node.content))
+    case 'bulletList':
+      return (node.content ?? []).map(li => serializeListItem(li, '+ ')).join('\n')
+    case 'orderedList': {
+      const start = Number(node.attrs?.start ?? 1)
+      return (node.content ?? []).map((li, i) => serializeListItem(li, `${start + i}. `)).join('\n')
+    }
+    default:
+      // Anti-loss fallback for unknown nodes: keep their text readable.
+      return escapeLeading(inlineTextOf(node))
+  }
+}
+
+/** doc JSON → markdown body (no frontmatter, no chapter title). */
+export function docToMarkdownBody(doc: TipTapDoc): string {
+  const body = serializeBlocks(doc.content)
+  return body ? body + '\n' : ''
+}
+
+// --- Block parsing (line based) ----------------------------------------------
+
+const RE_SCENE = /^\* \* \*$/
+const RE_HR = /^---+$/
+const RE_HEADING = /^(#{1,6}) (.*)$/
+const RE_FENCE_OPEN = /^```([\w+-]*)\s*$/
+const RE_FENCE_CLOSE = /^```\s*$/
+const RE_QUOTE = /^>( |$)/
+const RE_BULLET = /^([+*]) (.*)$/
+const RE_ORDERED = /^(\d+)\. (.*)$/
+
+function isBlockStart(line: string): boolean {
+  const t = line.trim()
+  return RE_SCENE.test(t) || RE_HR.test(t) || RE_HEADING.test(line) || RE_FENCE_OPEN.test(line)
+    || RE_QUOTE.test(line) || RE_BULLET.test(line) || RE_ORDERED.test(line)
+}
+
+function leadingSpaces(line: string): number {
+  return (line.match(/^ */) as RegExpMatchArray)[0].length
+}
+
+function parseList(lines: string[], start: number): { node: TipTapNode; next: number } {
+  const ordered = RE_ORDERED.test(lines[start])
+  const re = ordered ? RE_ORDERED : RE_BULLET
+  const items: TipTapNode[] = []
+  let startNum = 1
+  let i = start
+  while (i < lines.length) {
+    const m = lines[i].match(re)
+    if (!m) break
+    if (items.length === 0 && ordered) startNum = Number(m[1])
+    const markerLen = lines[i].length - m[2].length
+    const body: string[] = [m[2]]
+    i++
+    while (i < lines.length) {
+      const l = lines[i]
+      if (l.trim() === '') {
+        const n = lines[i + 1]
+        if (n !== undefined && n.trim() !== '' && leadingSpaces(n) >= markerLen) { body.push(''); i++; continue }
+        if (n !== undefined && re.test(n)) { i++ } // blank between items: same list
+        break
+      }
+      if (leadingSpaces(l) >= markerLen) { body.push(l.slice(markerLen)); i++; continue }
+      break
+    }
+    items.push({ type: 'listItem', content: parseBlocks(body) })
+  }
+  const node: TipTapNode = ordered
+    ? { type: 'orderedList', attrs: { start: startNum }, content: items }
+    : { type: 'bulletList', content: items }
+  return { node, next: i }
+}
+
+function parseBlocks(lines: string[]): TipTapNode[] {
+  const out: TipTapNode[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    const t = line.trim()
+    if (t === '') { i++; continue }
+    if (RE_SCENE.test(t)) { out.push({ type: 'sceneBreak' }); i++; continue }
+    if (RE_HR.test(t)) { out.push({ type: 'horizontalRule' }); i++; continue }
+    const h = line.match(RE_HEADING)
+    if (h) {
+      out.push({ type: 'heading', attrs: { level: Math.min(3, h[1].length) }, content: parseInline(h[2]) })
+      i++
+      continue
+    }
+    const f = line.match(RE_FENCE_OPEN)
+    if (f) {
+      const code: string[] = []
+      i++
+      while (i < lines.length && !RE_FENCE_CLOSE.test(lines[i])) code.push(lines[i++])
+      i++ // closing fence, or past the end if unterminated
+      const node: TipTapNode = { type: 'codeBlock', attrs: { language: f[1] || null } }
+      if (code.length) node.content = [{ type: 'text', text: code.join('\n') }]
+      out.push(node)
+      continue
+    }
+    if (RE_QUOTE.test(line)) {
+      const inner: string[] = []
+      while (i < lines.length && RE_QUOTE.test(lines[i])) inner.push(lines[i++].replace(/^> ?/, ''))
+      out.push({ type: 'blockquote', content: parseBlocks(inner) })
+      continue
+    }
+    if (RE_BULLET.test(line) || RE_ORDERED.test(line)) {
+      const r = parseList(lines, i)
+      out.push(r.node)
+      i = r.next
+      continue
+    }
+    // Paragraph: one physical line, unless it ends with `\` or two spaces (hard break).
+    const parts: TipTapNode[] = []
+    let cur = line
+    for (;;) {
+      const hard = /(\\|  )$/.test(cur)
+      let text = cur.replace(/\s+$/, '')
+      if (hard && text.endsWith('\\')) text = text.slice(0, -1)
+      parts.push(...parseInline(text))
+      const next = lines[i + 1]
+      if (hard && next !== undefined && next.trim() !== '' && !isBlockStart(next)) {
+        parts.push({ type: 'hardBreak' })
+        cur = next
+        i++
+        continue
+      }
+      break
+    }
+    out.push({ type: 'paragraph', content: parts })
+    i++
+  }
+  return out
 }
 
 /**
- * markdown body → array of content nodes. The first paragraph becomes a
- * `firstParagraph` node (no first-line indent after the chapter title).
+ * markdown body → content nodes. Every non-blank line is a paragraph unless it
+ * opens a block; the first top-level paragraph becomes `firstParagraph`.
  */
 export function markdownBodyToContent(body: string): TipTapNode[] {
-  const blocks = body.split(/\n[ \t]*\n/)
-  const nodes: TipTapNode[] = []
-  for (const raw of blocks) {
-    const node = parseBlock(raw)
-    if (node) nodes.push(node)
-  }
+  const lines = body.replace(/\r\n?/g, '\n').split('\n')
+  const nodes = parseBlocks(lines)
   const first = nodes.find(n => n.type === 'paragraph')
   if (first) first.type = 'firstParagraph'
   return nodes
